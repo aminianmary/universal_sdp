@@ -1,0 +1,10 @@
+*.pyc
+*.xml
+*.iml
+.idea
+.idea/vcs.xml
+data
+.idea/workspace.xml
+bmstparser/results
+bmstparser/src/results
+bmstparser/src.tar.gz

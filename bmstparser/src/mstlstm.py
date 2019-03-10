@@ -68,55 +68,57 @@ class MSTParserLSTM:
         w_mlp_arc = orthonormal_initializer(options.arc_mlp, options.rnn * 2)
         w_mlp_label = orthonormal_initializer(options.label_mlp, options.rnn * 2)
 
-        # higher layers for syntax
-        self.arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                      init=NumpyInitializer(w_mlp_arc))
-        self.arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                        init=NumpyInitializer(w_mlp_label))
-        self.label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-        self.arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                     init=NumpyInitializer(w_mlp_arc))
-        self.arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                       init=NumpyInitializer(w_mlp_label))
-        self.label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+        if options.sharing_mode != 'shared':
+            # higher layers for syntax
+            self.arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                          init=NumpyInitializer(w_mlp_arc))
+            self.arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                            init=NumpyInitializer(w_mlp_label))
+            self.label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+            self.arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                         init=NumpyInitializer(w_mlp_arc))
+            self.arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                           init=NumpyInitializer(w_mlp_label))
+            self.label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+
+            # higher layers for semantics
+            self.sem_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                              init=NumpyInitializer(w_mlp_arc))
+            self.sem_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.sem_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                                init=NumpyInitializer(w_mlp_label))
+            self.sem_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+            self.sem_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                             init=NumpyInitializer(w_mlp_arc))
+            self.sem_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.sem_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                               init=NumpyInitializer(w_mlp_label))
+            self.sem_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+        else:
+            # higher layers for MTL
+            self.mtl_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                              init=NumpyInitializer(w_mlp_arc))
+            self.mtl_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.mtl_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                                init=NumpyInitializer(w_mlp_label))
+            self.mtl_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+            self.mtl_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                             init=NumpyInitializer(w_mlp_arc))
+            self.mtl_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+            self.mtl_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                               init=NumpyInitializer(w_mlp_label))
+            self.mtl_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+            self.mtl_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
+
         self.w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
         self.u_label = self.model.add_parameters((len(self.idep_rels) * (options.label_mlp + 1), options.label_mlp + 1),
                                                  init=ConstInitializer(0))
-
-        # higher layers for semantics
-        self.sem_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                          init=NumpyInitializer(w_mlp_arc))
-        self.sem_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.sem_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                            init=NumpyInitializer(w_mlp_label))
-        self.sem_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-        self.sem_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                         init=NumpyInitializer(w_mlp_arc))
-        self.sem_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.sem_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                           init=NumpyInitializer(w_mlp_label))
-        self.sem_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
         self.sem_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
         self.sem_u_label = self.model.add_parameters(
             (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
             init=ConstInitializer(0))
-
-        # higher layers for MTL
-        self.multi_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                      init=NumpyInitializer(w_mlp_arc))
-        self.multi_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.multi_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                        init=NumpyInitializer(w_mlp_label))
-        self.multi_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-        self.multi_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
-                                                     init=NumpyInitializer(w_mlp_arc))
-        self.multi_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-        self.multi_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
-                                                       init=NumpyInitializer(w_mlp_label))
-        self.multi_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-        self.multi_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
 
         # dropout mask for input layers (word, external, POS, character)
         # dropout mask for word, external embeddings and Character is different from that of POS
@@ -215,11 +217,11 @@ class MSTParserLSTM:
             H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
-    def rnn_mlp(self, h, train):
-        H = self.activation(affine_transform([self.multi_arc_mlp_head_b.expr(), self.multi_arc_mlp_head.expr(), h]))
-        M = self.activation(affine_transform([self.multi_arc_mlp_dep_b.expr(), self.multi_arc_mlp_dep.expr(), h]))
-        HL = self.activation(affine_transform([self.multi_label_mlp_head_b.expr(), self.multi_label_mlp_head.expr(), h]))
-        ML = self.activation(affine_transform([self.multi_label_mlp_dep_b.expr(), self.multi_label_mlp_dep.expr(), h]))
+    def rnn_mtl_mlp(self, h, train):
+        H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr(), h]))
+        M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr(), h]))
+        HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr(), h]))
+        ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr(), h]))
 
         arc_dropout = self.options.arc_dropout
         label_dropout = self.options.label_dropout
@@ -363,10 +365,9 @@ class MSTParserLSTM:
                                    mini_batch[0].shape[1], len(self.isem_rels), True, True)
         return head_scores, rel_scores
 
-    def get_scores(self, h, mini_batch, mtl_task, train):
-        H, M, HL, ML = self.rnn_mlp(h, train)
+    def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
         # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
-        head_scores = self.bilinear(M, self.multi_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+        head_scores = self.bilinear(M, self.mtl_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
         # dim: (sen_len[for-head], labels, sen_len[for-dep]), num_sen[batch-size]
         num_rels = len(self.isem_rels) if mtl_task == 'sem' else len(self.idep_rels)
@@ -382,12 +383,12 @@ class MSTParserLSTM:
     def get_mutli_scores(self, h, mini_batch, mlp_mode):
         sem_hs, sem_rs, syn_hs, syn_rs = None, None, None, None
         if mlp_mode == 'shared':
-            sem_hs, sem_rs = self.get_scores(h, mini_batch, 'sem', train=True)
-            syn_hs, syn_rs = self.get_scores(h, mini_batch, 'syntax', train=True, )
+            H, M, HL, ML = self.rnn_mtl_mlp(h, train=True)
+            sem_hs, sem_rs = self.get_scores(H, M, HL, ML, mini_batch, 'sem')
+            syn_hs, syn_rs = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
         elif mlp_mode == 'separate':
-            sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=True)
-            syn_head_scores, syn_rel_scores = self.get_syn_scores(h, mini_batch, train=True)
-            sem_hs, sem_rs, syn_hs, sem_rs = sem_head_scores, sem_rel_scores, syn_head_scores, syn_rel_scores
+            sem_hs, sem_rs = self.get_sem_scores(h, mini_batch, train=True)
+            syn_hs, syn_rs = self.get_syn_scores(h, mini_batch, train=True)
         elif mlp_mode == 'mean':
             #todo
             print 'not done yet'
@@ -398,6 +399,8 @@ class MSTParserLSTM:
         heads_tensor = inputTensor(heads, batched=True)
         head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
         indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
+        if len(indices_to_use_for_head) == 0:
+            return
         n_head_tokens = len(indices_to_use_for_head)
 
         flat_head_scores = reshape(sem_hs, (1,), heads.shape[0])
@@ -428,12 +431,14 @@ class MSTParserLSTM:
         return head_loss, rel_loss
 
     def syn_loss(self, mini_batch, syn_hs, syn_rs):
+        masks = np.reshape(mini_batch[-1], (-1,), 'F')
+        n_tokens = np.sum(masks)
+        if n_tokens == 0:
+            return
         flat_scores = reshape(syn_hs, (mini_batch[0].shape[0],), mini_batch[0].shape[0] * mini_batch[0].shape[1])
         flat_rel_scores = reshape(syn_rs, (mini_batch[0].shape[0], len(self.idep_rels)),
                                   mini_batch[0].shape[0] * mini_batch[0].shape[1])
-        masks = np.reshape(mini_batch[-1], (-1,), 'F')
         mask_1D_tensor = inputTensor(masks, batched=True)
-        n_tokens = np.sum(masks)
         heads = np.reshape(mini_batch[3], (-1,), 'F')
         partial_rel_scores = pick_batch(flat_rel_scores, heads)
         gold_relations = np.reshape(mini_batch[4], (-1,), 'F')
@@ -446,12 +451,14 @@ class MSTParserLSTM:
     def build_multi_graph(self, mini_batch, sharing_mode, t=1):
         h = self.recurrent_layer(mini_batch, train=True)
         sem_hs, sem_rs, syn_hs, syn_rs = self.get_mutli_scores(h, mini_batch, sharing_mode)
-        sem_head_loss, sem_rel_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
-        syn_head_loss, syn_rel_loss = self.syn_loss(mini_batch, syn_hs, syn_rs)
+        sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
+        sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1])  if sem_loss is not None else (None,None)
+        syn_loss =  self.syn_loss(mini_batch, syn_hs, syn_rs)
+        syn_head_loss, syn_rel_loss = (syn_loss[0], syn_loss[1]) if syn_loss is not None else (None,None)
 
         coef = self.options.interpolation_coef
-        sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss
-        syn_err = coef * syn_rel_loss + (1 - coef) * syn_head_loss
+        sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss if sem_loss else 0
+        syn_err = (syn_rel_loss +  syn_head_loss)/2 if syn_loss else 0
         err = sem_err + syn_err
         err.scalar_value()
         loss = err.value()
@@ -465,12 +472,17 @@ class MSTParserLSTM:
     def decode(self, mini_batch):
         h = self.recurrent_layer(mini_batch, train=False)
 
+        if self.options.sharing_mode == "shared":
+            sem_head_scores, sem_rel_scores,flat_syntax_rel_scores, flat_syntax_scores = self.get_mutli_scores(h, mini_batch, train=False)
+        else:
+            flat_syntax_rel_scores, flat_syntax_scores = self.get_syntax_scores(h, mini_batch, train=False)
+            sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)
+
         # Syntax
-        flat_syntax_rel_scores, flat_syntax_scores = self.get_syntax_scores(h, mini_batch, train=False)
         syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syntax_scores).npvalue(), (
             mini_batch[0].shape[0], mini_batch[0].shape[0], mini_batch[0].shape[1]), 'F'))
         syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syntax_rel_scores)).npvalue(),
-                                                   (len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
+                                 s                  (len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
                                                     mini_batch[0].shape[1]), 'F'))
         syntax_outputs = []
 
@@ -485,8 +497,6 @@ class MSTParserLSTM:
             syntax_outputs.append((arc_pred[1:sent_len], syntax_rel_pred[1:sent_len]))
 
         # Semantics
-        sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)
-
         sem_head_score_values = sem_head_scores.npvalue()
         sem_rel_argmax = np.argmax(sem_rel_scores.npvalue(), axis=1)
         if sem_head_scores.dim()[1] == 1:

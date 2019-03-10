@@ -300,7 +300,6 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
     mini_batches.append((words, pwords, pos, dep_heads, dep_relations, sem_heads, sem_rels, chars, sem_head_masks,
                          sem_rel_masks, dep_masks))
 
-
 def is_punc(pos):
     return pos == '.' or pos == 'PUNC' or pos == 'PUNCT' or \
            pos == "#" or pos == "''" or pos == "(" or \

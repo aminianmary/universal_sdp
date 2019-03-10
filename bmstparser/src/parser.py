@@ -87,7 +87,8 @@ if __name__ == '__main__':
     parser.add_option("--dynet-gpus", action="store_true", dest="dynet-gpus", default=False,
                       help='Use GPU instead of cpu.')
     parser.add_option("--dynet-weight-decay", type="float", dest="dynet-weight-decay", default=3e-9)
-    parser.add_option("--task", type="string", dest="task", help="options: syntax,sem,multi", default="syntax")
+    parser.add_option("--task", type="string", dest="task", help="options: syntax, sem, multi", default="syntax")
+    parser.add_option("--sharing_mode", type="string", dest="sharing_mode", help="options: shared, separate", default="shared")
     #dropout parameters
     parser.add_option("--input_emb_dropout", type="float", dest="input_emb_dropout", default=0.2)
     parser.add_option("--charlstm_dropout", type="float", dest="charlstm_dropout", default=0.33)
@@ -151,10 +152,10 @@ if __name__ == '__main__':
             for i, minibatch in enumerate(mini_batches):
                 if options.task == "syntax":
                     t, loss = parser.build_syntax_graph(minibatch, t)
-                elif options.task == "sem":  # todo
+                elif options.task == "sem":
                     t, loss = parser.build_semantic_graph(minibatch, t)
-                elif options.task == "multi":  # todo
-                    t, loss = parser.build_syntax_graph(minibatch, t)
+                elif options.task == "multi":
+                    t, loss = parser.build_multi_graph(minibatch, options.sharing_mode , t)
                 else:
                     print 'unknown task option'
                     sys.exit(1)
@@ -190,7 +191,6 @@ if __name__ == '__main__':
                             else:
                                 no_improvement += 1
                         elif options.task == 'multi':
-                            #todo need a closer look
                             print 'current syntax accuracy', best_las, uas
                             print 'current semantic LF', best_lf, lf
                             if lf * las > best_lf * best_las:

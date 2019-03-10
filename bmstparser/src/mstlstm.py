@@ -103,6 +103,21 @@ class MSTParserLSTM:
             (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
             init=ConstInitializer(0))
 
+        # higher layers for MTL
+        self.multi_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                      init=NumpyInitializer(w_mlp_arc))
+        self.multi_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+        self.multi_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                        init=NumpyInitializer(w_mlp_label))
+        self.multi_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+        self.multi_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+                                                     init=NumpyInitializer(w_mlp_arc))
+        self.multi_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
+        self.multi_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+                                                       init=NumpyInitializer(w_mlp_label))
+        self.multi_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+        self.multi_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
+
         # dropout mask for input layers (word, external, POS, character)
         # dropout mask for word, external embeddings and Character is different from that of POS
         def _dropout_mask_generator(seq_len, batch_size):
@@ -188,13 +203,23 @@ class MSTParserLSTM:
         return H, M, HL, ML
 
     def rnn_sem_mlp(self, h, train):
-        '''
-        Here, I assumed all sens have the same length.
-        '''
         H = self.activation(affine_transform([self.sem_arc_mlp_head_b.expr(), self.sem_arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.sem_arc_mlp_dep_b.expr(), self.sem_arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.sem_label_mlp_head_b.expr(), self.label_mlp_head.expr(), h]))
         ML = self.activation(affine_transform([self.sem_label_mlp_dep_b.expr(), self.sem_label_mlp_dep.expr(), h]))
+
+        arc_dropout = self.options.arc_dropout
+        label_dropout = self.options.label_dropout
+
+        if train:
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+        return H, M, HL, ML
+
+    def rnn_mlp(self, h, train):
+        H = self.activation(affine_transform([self.multi_arc_mlp_head_b.expr(), self.multi_arc_mlp_head.expr(), h]))
+        M = self.activation(affine_transform([self.multi_arc_mlp_dep_b.expr(), self.multi_arc_mlp_dep.expr(), h]))
+        HL = self.activation(affine_transform([self.multi_label_mlp_head_b.expr(), self.multi_label_mlp_head.expr(), h]))
+        ML = self.activation(affine_transform([self.multi_label_mlp_dep_b.expr(), self.multi_label_mlp_dep.expr(), h]))
 
         arc_dropout = self.options.arc_dropout
         label_dropout = self.options.label_dropout
@@ -337,6 +362,105 @@ class MSTParserLSTM:
         rel_scores = self.bilinear(ML, self.sem_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
                                    mini_batch[0].shape[1], len(self.isem_rels), True, True)
         return head_scores, rel_scores
+
+    def get_scores(self, h, mini_batch, mtl_task, train):
+        H, M, HL, ML = self.rnn_mlp(h, train)
+        # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
+        head_scores = self.bilinear(M, self.multi_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+                                    mini_batch[0].shape[1], 1, True, False)
+        # dim: (sen_len[for-head], labels, sen_len[for-dep]), num_sen[batch-size]
+        num_rels = len(self.isem_rels) if mtl_task == 'sem' else len(self.idep_rels)
+
+        if mtl_task == 'sem':
+            rel_scores = self.bilinear(ML, self.sem_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
+                                   mini_batch[0].shape[1], num_rels, True, True)
+        elif mtl_task == 'syntax':
+            rel_scores = self.bilinear(ML, self.u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
+                                   mini_batch[0].shape[1], num_rels, True, True)
+        return head_scores, rel_scores
+
+    def get_mutli_scores(self, h, mini_batch, mlp_mode):
+        sem_hs, sem_rs, syn_hs, syn_rs = None, None, None, None
+        if mlp_mode == 'shared':
+            sem_hs, sem_rs = self.get_scores(h, mini_batch, 'sem', train=True)
+            syn_hs, syn_rs = self.get_scores(h, mini_batch, 'syntax', train=True, )
+        elif mlp_mode == 'separate':
+            sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=True)
+            syn_head_scores, syn_rel_scores = self.get_syn_scores(h, mini_batch, train=True)
+            sem_hs, sem_rs, syn_hs, sem_rs = sem_head_scores, sem_rel_scores, syn_head_scores, syn_rel_scores
+        elif mlp_mode == 'mean':
+            #todo
+            print 'not done yet'
+        return sem_hs, sem_rs, syn_hs, syn_rs
+
+    def sem_loss(self, mini_batch, sem_hs, sem_rs):
+        heads = np.reshape(mini_batch[5], (-1,), 'F')
+        heads_tensor = inputTensor(heads, batched=True)
+        head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
+        indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
+        n_head_tokens = len(indices_to_use_for_head)
+
+        flat_head_scores = reshape(sem_hs, (1,), heads.shape[0])
+        flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
+        heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
+        flat_head_probs = logistic(flat_head_scores_to_use)
+        head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
+        head_loss = sum_batches(head_losses) / n_head_tokens
+
+        rels = np.reshape(mini_batch[6], (-1,), 'F')
+        rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')
+        indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
+        rels_to_use = [rels[i] for i in indices_to_use_for_rel]
+        n_rel_tokens = len(indices_to_use_for_rel)
+        # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
+        matrix_rel_scores = reshape(sem_rs, (mini_batch[0].shape[0], len(self.isem_rels)),
+                                    mini_batch[0].shape[0] * mini_batch[0].shape[1])
+        # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
+        matrix_rel_scores_transpose = transpose(matrix_rel_scores)
+        # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
+        flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
+        # dim: (labels, len(indices_to_use_for_rel)
+        flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
+        flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
+        rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
+        rel_loss = sum_batches(rel_losses) / n_rel_tokens
+
+        return head_loss, rel_loss
+
+    def syn_loss(self, mini_batch, syn_hs, syn_rs):
+        flat_scores = reshape(syn_hs, (mini_batch[0].shape[0],), mini_batch[0].shape[0] * mini_batch[0].shape[1])
+        flat_rel_scores = reshape(syn_rs, (mini_batch[0].shape[0], len(self.idep_rels)),
+                                  mini_batch[0].shape[0] * mini_batch[0].shape[1])
+        masks = np.reshape(mini_batch[-1], (-1,), 'F')
+        mask_1D_tensor = inputTensor(masks, batched=True)
+        n_tokens = np.sum(masks)
+        heads = np.reshape(mini_batch[3], (-1,), 'F')
+        partial_rel_scores = pick_batch(flat_rel_scores, heads)
+        gold_relations = np.reshape(mini_batch[4], (-1,), 'F')
+        arc_losses = pickneglogsoftmax_batch(flat_scores, heads)
+        arc_loss = sum_batches(arc_losses * mask_1D_tensor) / n_tokens
+        rel_losses = pickneglogsoftmax_batch(partial_rel_scores, gold_relations)
+        rel_loss = sum_batches(rel_losses * mask_1D_tensor) / n_tokens
+        return arc_loss, rel_loss
+
+    def build_multi_graph(self, mini_batch, sharing_mode, t=1):
+        h = self.recurrent_layer(mini_batch, train=True)
+        sem_hs, sem_rs, syn_hs, syn_rs = self.get_mutli_scores(h, mini_batch, sharing_mode)
+        sem_head_loss, sem_rel_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
+        syn_head_loss, syn_rel_loss = self.syn_loss(mini_batch, syn_hs, syn_rs)
+
+        coef = self.options.interpolation_coef
+        sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss
+        syn_err = coef * syn_rel_loss + (1 - coef) * syn_head_loss
+        err = sem_err + syn_err
+        err.scalar_value()
+        loss = err.value()
+        if math.isnan(loss):
+            print 'loss value:' ,loss
+        err.backward()
+        self.trainer.update()
+        renew_cg()
+        return t + 1, loss
 
     def decode(self, mini_batch):
         h = self.recurrent_layer(mini_batch, train=False)

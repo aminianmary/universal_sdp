@@ -221,7 +221,7 @@ class MSTParserLSTM:
         H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr(), h]))
-        ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr(), h]))
+        ML = self.activation(affine_transform([self.multi_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr(), h]))
 
         arc_dropout = self.options.arc_dropout
         label_dropout = self.options.label_dropout
@@ -367,7 +367,7 @@ class MSTParserLSTM:
 
     def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
         # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
-        head_scores = self.bilinear(M, self.mtl_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+        head_scores = self.bilinear(M, self.multi_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
         # dim: (sen_len[for-head], labels, sen_len[for-dep]), num_sen[batch-size]
         num_rels = len(self.isem_rels) if mtl_task == 'sem' else len(self.idep_rels)
@@ -380,16 +380,16 @@ class MSTParserLSTM:
                                    mini_batch[0].shape[1], num_rels, True, True)
         return head_scores, rel_scores
 
-    def get_mutli_scores(self, h, mini_batch, mlp_mode):
+    def get_mtl_scores(self, h, mini_batch, mlp_mode, train):
         sem_hs, sem_rs, syn_hs, syn_rs = None, None, None, None
         if mlp_mode == 'shared':
-            H, M, HL, ML = self.rnn_mtl_mlp(h, train=True)
+            H, M, HL, ML = self.rnn_mtl_mlp(h, train)
             sem_hs, sem_rs = self.get_scores(H, M, HL, ML, mini_batch, 'sem')
             syn_hs, syn_rs = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
         elif mlp_mode == 'separate':
-            sem_hs, sem_rs = self.get_sem_scores(h, mini_batch, train=True)
-            syn_hs, syn_rs = self.get_syn_scores(h, mini_batch, train=True)
-        elif mlp_mode == 'mean':
+            sem_hs, sem_rs = self.get_sem_scores(h, mini_batch, train)
+            syn_hs, syn_rs = self.get_syn_scores(h, mini_batch, train)
+        elif mlp_mode == 'sum':
             #todo
             print 'not done yet'
         return sem_hs, sem_rs, syn_hs, syn_rs
@@ -450,7 +450,7 @@ class MSTParserLSTM:
 
     def build_multi_graph(self, mini_batch, sharing_mode, t=1):
         h = self.recurrent_layer(mini_batch, train=True)
-        sem_hs, sem_rs, syn_hs, syn_rs = self.get_mutli_scores(h, mini_batch, sharing_mode)
+        sem_hs, sem_rs, syn_hs, syn_rs = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
         sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
         sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1])  if sem_loss is not None else (None,None)
         syn_loss =  self.syn_loss(mini_batch, syn_hs, syn_rs)
@@ -472,8 +472,8 @@ class MSTParserLSTM:
     def decode(self, mini_batch):
         h = self.recurrent_layer(mini_batch, train=False)
 
-        if self.options.sharing_mode == "shared":
-            sem_head_scores, sem_rel_scores,flat_syntax_rel_scores, flat_syntax_scores = self.get_mutli_scores(h, mini_batch, train=False)
+        if self.options.task == 'multi' and self.options.sharing_mode == "shared":
+            sem_head_scores, sem_rel_scores,flat_syntax_rel_scores, flat_syntax_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
         else:
             flat_syntax_rel_scores, flat_syntax_scores = self.get_syntax_scores(h, mini_batch, train=False)
             sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)

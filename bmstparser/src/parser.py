@@ -88,7 +88,7 @@ if __name__ == '__main__':
                       help='Use GPU instead of cpu.')
     parser.add_option("--dynet-weight-decay", type="float", dest="dynet-weight-decay", default=3e-9)
     parser.add_option("--task", type="string", dest="task", help="options: syntax, sem, multi", default="syntax")
-    parser.add_option("--sharing_mode", type="string", dest="sharing_mode", help="options: shared, separate", default="shared")
+    parser.add_option("--sharing_mode", type="string", dest="sharing_mode", help="options: shared, separate, sum", default="shared")
     #dropout parameters
     parser.add_option("--input_emb_dropout", type="float", dest="input_emb_dropout", default=0.2)
     parser.add_option("--charlstm_dropout", type="float", dest="charlstm_dropout", default=0.33)

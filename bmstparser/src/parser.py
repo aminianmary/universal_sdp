@@ -155,7 +155,7 @@ if __name__ == '__main__':
                 elif options.task == "sem":
                     t, loss = parser.build_semantic_graph(minibatch, t)
                 elif options.task == "multi":
-                    t, loss = parser.build_multi_graph(minibatch, options.sharing_mode , t)
+                    t, loss = parser.build_mtl_graph(minibatch, options.sharing_mode, t)
                 else:
                     print 'unknown task option'
                     sys.exit(1)

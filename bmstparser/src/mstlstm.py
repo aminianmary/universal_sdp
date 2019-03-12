@@ -221,7 +221,7 @@ class MSTParserLSTM:
         H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr(), h]))
-        ML = self.activation(affine_transform([self.multi_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr(), h]))
+        ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr(), h]))
 
         arc_dropout = self.options.arc_dropout
         label_dropout = self.options.label_dropout
@@ -367,7 +367,7 @@ class MSTParserLSTM:
 
     def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
         # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
-        head_scores = self.bilinear(M, self.multi_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+        head_scores = self.bilinear(M, self.mtl_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
         # dim: (sen_len[for-head], labels, sen_len[for-dep]), num_sen[batch-size]
         num_rels = len(self.isem_rels) if mtl_task == 'sem' else len(self.idep_rels)
@@ -473,7 +473,7 @@ class MSTParserLSTM:
         h = self.recurrent_layer(mini_batch, train=False)
 
         if self.options.task == 'multi' and self.options.sharing_mode == "shared":
-            sem_head_scores, sem_rel_scores,flat_syntax_rel_scores, flat_syntax_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
+            sem_head_scores, sem_rel_scores,flat_syntax_scores, flat_syntax_rel_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
         else:
             flat_syntax_rel_scores, flat_syntax_scores = self.get_syntax_scores(h, mini_batch, train=False)
             sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)
@@ -481,8 +481,7 @@ class MSTParserLSTM:
         # Syntax
         syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syntax_scores).npvalue(), (
             mini_batch[0].shape[0], mini_batch[0].shape[0], mini_batch[0].shape[1]), 'F'))
-        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syntax_rel_scores)).npvalue(),
-                                 s                  (len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
+        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syntax_rel_scores)).npvalue(),(len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
                                                     mini_batch[0].shape[1]), 'F'))
         syntax_outputs = []
 

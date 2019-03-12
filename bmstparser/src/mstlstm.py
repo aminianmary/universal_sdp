@@ -398,7 +398,7 @@ class MSTParserLSTM:
             syn_hs, syn_rs = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
         elif mlp_mode == 'separate':
             sem_hs, sem_rs = self.get_sem_scores(h, mini_batch, train)
-            syn_rs_, syn_hs_ = self.get_syntax_scores(h, mini_batch, train)
+            syn_hs_, syn_rs_ = self.get_syntax_scores(h, mini_batch, train)
             syn_hs = reshape(syn_hs_, (mini_batch[0].shape[0],),
                                   mini_batch[0].shape[0] * mini_batch[0].shape[1])
             syn_rs = reshape(syn_rs_, (mini_batch[0].shape[0], len(self.idep_rels)),

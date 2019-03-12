@@ -473,15 +473,19 @@ class MSTParserLSTM:
         h = self.recurrent_layer(mini_batch, train=False)
 
         if self.options.task == 'multi' and self.options.sharing_mode == "shared":
-            sem_head_scores, sem_rel_scores,flat_syntax_scores, flat_syntax_rel_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
+            sem_head_scores, sem_rel_scores, syn_head_scores, syn_rel_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
+            flat_syn_head_scores = reshape(syn_head_scores, (mini_batch[0].shape[0],),
+                                  mini_batch[0].shape[0] * mini_batch[0].shape[1])
+            flat_syn_rel_scores = reshape(syn_rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
+                                      mini_batch[0].shape[0] * mini_batch[0].shape[1])
         else:
-            flat_syntax_rel_scores, flat_syntax_scores = self.get_syntax_scores(h, mini_batch, train=False)
+            flat_syn_rel_scores, flat_syn_head_scores = self.get_syntax_scores(h, mini_batch, train=False)
             sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)
 
         # Syntax
-        syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syntax_scores).npvalue(), (
+        syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syn_head_scores).npvalue(), (
             mini_batch[0].shape[0], mini_batch[0].shape[0], mini_batch[0].shape[1]), 'F'))
-        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syntax_rel_scores)).npvalue(),(len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
+        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syn_rel_scores)).npvalue(),(len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
                                                     mini_batch[0].shape[1]), 'F'))
         syntax_outputs = []
 

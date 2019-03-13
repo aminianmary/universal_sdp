@@ -113,7 +113,6 @@ class MSTParserLSTM:
             self.sem_u_label = self.model.add_parameters(
                 (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
                 init=ConstInitializer(0))
-
         if self.need_mtl:
             # higher layers for MTL
             self.mtl_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
@@ -129,6 +128,12 @@ class MSTParserLSTM:
                                                                init=NumpyInitializer(w_mlp_label))
             self.mtl_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
             self.mtl_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
+            self.sem_u_label = self.model.add_parameters(
+            (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
+            init=ConstInitializer(0))
+            self.syn_u_label = self.model.add_parameters(
+            (len(self.idep_rels) * (options.label_mlp + 1), options.label_mlp + 1),
+            init=ConstInitializer(0))
 
         # dropout mask for input layers (word, external, POS, character)
         # dropout mask for word, external embeddings and Character is different from that of POS

@@ -73,6 +73,7 @@ if __name__ == '__main__':
     parser.add_option("--beta1", type="float", dest="beta1", default=0)
     parser.add_option("--beta2", type="float", dest="beta2", default=0.95)
     parser.add_option("--interpolation_coef", type="float", dest="interpolation_coef", default=0.025)
+    parser.add_option("--mtl_coef", type="float", dest="mtl_coef", default=0.9)
     parser.add_option("--outdir", type="string", dest="output", default="results")
     parser.add_option("--activation", type="string", dest="activation", default="leaky")
     parser.add_option("--layer", type="int", dest="layer", default=3)

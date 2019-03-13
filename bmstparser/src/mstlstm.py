@@ -245,6 +245,25 @@ class MSTParserLSTM:
             H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
+    def rnn_mtl_mlp_sum(self, h, task, train):
+        if task == 'syntax':
+            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr() + self.arc_mlp_head.expr(), h]))
+            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr() + self.arc_mlp_dep.expr(), h]))
+            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr() + self.label_mlp_head.expr(), h]))
+            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr() + self.label_mlp_dep.expr(), h]))
+        elif task == 'sem':
+            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.sem_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr() + self.sem_arc_mlp_head.expr(), h]))
+            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.sem_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr() + self.sem_arc_mlp_dep.expr(), h]))
+            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.sem_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr() +  self.sem_label_mlp_head.expr(), h]))
+            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.sem_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr() + self.sem_label_mlp_dep.expr(), h]))
+
+        arc_dropout = self.options.arc_dropout
+        label_dropout = self.options.label_dropout
+
+        if train:
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+        return H, M, HL, ML
+
     def char_lstm_output(self, cembed, train=False, batch_size=None):
         fb, bb = self.char_lstm.builder_layers[0][0], self.char_lstm.builder_layers[0][1]
         f, b = fb.initial_state(), bb.initial_state()
@@ -364,7 +383,7 @@ class MSTParserLSTM:
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):
-            print 'loss value:' ,loss
+            print 'loss value:',loss
         err.backward()
         self.trainer.update()
         renew_cg()
@@ -410,17 +429,11 @@ class MSTParserLSTM:
                                       mini_batch[0].shape[0] * mini_batch[0].shape[1])
         elif mlp_mode == 'sum':
             # shared scores
-            H, M, HL, ML = self.rnn_mtl_mlp(h, train)
-            sem_hs_shared, sem_rs_shared = self.get_scores(H, M, HL, ML, mini_batch, 'sem')
-            syn_hs_shared, syn_rs_shared = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
-            # task-specific scores
-            sem_hs_task_specific, sem_rs_task_specific = self.get_sem_scores(h, mini_batch, train)
-            syn_hs_task_specific, syn_rs_task_specific = self.get_syntax_scores(h, mini_batch, train)
-            # todo make sure the summation works on batches
-            sem_hs = sem_hs_shared + sem_hs_task_specific
-            sem_rs =  sem_rs_shared + sem_rs_task_specific
-            syn_hs = syn_hs_shared + syn_hs_task_specific
-            syn_rs = syn_rs_shared + syn_rs_task_specific
+            H_syn, M_syn, HL_syn, ML_syn = self.rnn_mtl_mlp_sum(h,'syntax', train)
+            H_sem, M_sem, HL_sem, ML_sem = self.rnn_mtl_mlp_sum(h,'sem', train)
+
+            sem_hs, sem_rs = self.get_scores(H_sem, M_sem, HL_sem, ML_sem, mini_batch, 'sem')
+            syn_hs, syn_rs = self.get_scores(H_syn, M_syn, HL_syn, ML_syn, mini_batch, 'syntax')
 
         return sem_hs, sem_rs, syn_hs, syn_rs
 
@@ -487,9 +500,10 @@ class MSTParserLSTM:
         syn_head_loss, syn_rel_loss = (syn_loss[0], syn_loss[1]) if syn_loss is not None else (None,None)
 
         coef = self.options.interpolation_coef
+        mtl_coef = self.options.mtl_coef
         sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss if sem_loss else 0
         syn_err = (syn_rel_loss +  syn_head_loss)/2 if syn_loss else 0
-        err = sem_err + syn_err
+        err = mtl_coef * sem_err + (1 - mtl_coef) * syn_err
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):

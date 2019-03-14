@@ -203,10 +203,7 @@ class MSTParserLSTM:
             inputs = [concatenate([f, b]) for f, b in zip(fs, reversed(bs))]
         return inputs
 
-    def rnn_syntax_mlp(self, h, train):
-        '''
-        Here, I assumed all sens have the same length.
-        '''
+    def fnn_syn(self, h, train):
         H = self.activation(affine_transform([self.arc_mlp_head_b.expr(), self.arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.arc_mlp_dep_b.expr(), self.arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.label_mlp_head_b.expr(), self.label_mlp_head.expr(), h]))
@@ -219,7 +216,7 @@ class MSTParserLSTM:
             H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
-    def rnn_sem_mlp(self, h, train):
+    def fnn_sem(self, h, train):
         H = self.activation(affine_transform([self.sem_arc_mlp_head_b.expr(), self.sem_arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.sem_arc_mlp_dep_b.expr(), self.sem_arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.sem_label_mlp_head_b.expr(), self.sem_label_mlp_head.expr(), h]))
@@ -232,7 +229,7 @@ class MSTParserLSTM:
             H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
-    def rnn_mtl_mlp(self, h, train):
+    def fnn_mtl(self, h, train):
         H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr(), h]))
         M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr(), h]))
         HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr(), h]))
@@ -245,7 +242,8 @@ class MSTParserLSTM:
             H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
-    def rnn_mtl_mlp_sum(self, h, task, train):
+
+    def fnn_mtl_sum(self, h, task, train):
         if task == 'syntax':
             H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr() + self.arc_mlp_head.expr(), h]))
             M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr() + self.arc_mlp_dep.expr(), h]))
@@ -336,7 +334,7 @@ class MSTParserLSTM:
         return t + 1, loss
 
     def get_syntax_scores(self, h, mini_batch, train):
-        H, M, HL, ML = self.rnn_syntax_mlp(h, train)
+        H, M, HL, ML = self.fnn_syn(h, train)
         arc_scores = self.bilinear(M, self.syn_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                    mini_batch[0].shape[1], 1, True, False)
         rel_scores = self.bilinear(ML, self.syn_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
@@ -390,7 +388,7 @@ class MSTParserLSTM:
         return t + 1, loss
 
     def get_sem_scores(self, h, mini_batch, train):
-        H, M, HL, ML = self.rnn_sem_mlp(h, train)
+        H, M, HL, ML = self.fnn_sem(h, train)
         # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
         head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
@@ -400,24 +398,23 @@ class MSTParserLSTM:
         return head_scores, rel_scores
 
     def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
-        # dim: (sen_len[for-head], sen_len[for-dep]), num_sen[batch-size]
-        head_scores = self.bilinear(M, self.mtl_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
-                                    mini_batch[0].shape[1], 1, True, False)
-        # dim: (sen_len[for-head], labels, sen_len[for-dep]), num_sen[batch-size]
-        num_rels = len(self.isem_rels) if mtl_task == 'sem' else len(self.idep_rels)
-
         if mtl_task == 'sem':
+            head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+                                        mini_batch[0].shape[1], 1, True, False)
             rel_scores = self.bilinear(ML, self.sem_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
-                                   mini_batch[0].shape[1], num_rels, True, True)
+                                   mini_batch[0].shape[1], len(self.isem_rels), True, True)
         elif mtl_task == 'syntax':
+            head_scores = self.bilinear(M, self.w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
+                                        mini_batch[0].shape[1], 1, True, False)
             rel_scores = self.bilinear(ML, self.syn_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
-                                       mini_batch[0].shape[1], num_rels, True, True)
+                                       mini_batch[0].shape[1], len(self.idep_rels), True, True)
+
         return head_scores, rel_scores
 
     def get_mtl_scores(self, h, mini_batch, mlp_mode, train):
         sem_hs, sem_rs, syn_hs, syn_rs = None, None, None, None
         if mlp_mode == 'shared':
-            H, M, HL, ML = self.rnn_mtl_mlp(h, train)
+            H, M, HL, ML = self.fnn_mtl(h, train)
             sem_hs, sem_rs = self.get_scores(H, M, HL, ML, mini_batch, 'sem')
             syn_hs, syn_rs = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
         elif mlp_mode == 'separate':
@@ -429,8 +426,8 @@ class MSTParserLSTM:
                                       mini_batch[0].shape[0] * mini_batch[0].shape[1])
         elif mlp_mode == 'sum':
             # shared scores
-            H_syn, M_syn, HL_syn, ML_syn = self.rnn_mtl_mlp_sum(h,'syntax', train)
-            H_sem, M_sem, HL_sem, ML_sem = self.rnn_mtl_mlp_sum(h,'sem', train)
+            H_syn, M_syn, HL_syn, ML_syn = self.fnn_mtl_sum(h, 'syntax', train)
+            H_sem, M_sem, HL_sem, ML_sem = self.fnn_mtl_sum(h, 'sem', train)
 
             sem_hs, sem_rs = self.get_scores(H_sem, M_sem, HL_sem, ML_sem, mini_batch, 'sem')
             syn_hs, syn_rs = self.get_scores(H_syn, M_syn, HL_syn, ML_syn, mini_batch, 'syntax')
@@ -496,7 +493,7 @@ class MSTParserLSTM:
         sem_hs, sem_rs, syn_hs, syn_rs = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
         sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
         sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1])  if sem_loss is not None else (None,None)
-        syn_loss =  self.syn_loss(mini_batch, syn_hs, syn_rs)
+        syn_loss = self.syn_loss(mini_batch, syn_hs, syn_rs)
         syn_head_loss, syn_rel_loss = (syn_loss[0], syn_loss[1]) if syn_loss is not None else (None,None)
 
         coef = self.options.interpolation_coef

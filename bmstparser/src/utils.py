@@ -137,7 +137,12 @@ def eval(gold, predicted):
         lp, lr = 100 * float(correct_sem_l) / all_sys_sem_deps, 100 * float(correct_sem_l) / all_gold_sem_deps
         up, ur = 100 * float(correct_sem_dep) / all_sys_sem_deps, 100 * float(
             correct_sem_dep) / all_gold_sem_deps
-        lf, uf = 2 * (lp * lr) / (lp + lr), 2 * (up * ur) / (up + ur)
+        if correct_sem_dep == 0:
+            lf, uf = 0, 0
+        elif correct_sem_l == 0:
+            lf = 0
+        else:
+            lf, uf = 2 * (lp * lr) / (lp + lr), 2 * (up * ur) / (up + ur)
     else:
         lf, uf = 0, 0
     return uas, las, uf, lf

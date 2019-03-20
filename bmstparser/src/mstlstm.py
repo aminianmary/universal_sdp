@@ -497,8 +497,10 @@ class MSTParserLSTM:
         mtl_coef = self.options.mtl_coef
         sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss if sem_loss else 0
         # todo change to have better performance
-        #syn_err = (syn_rel_loss +  syn_head_loss)/2 if syn_loss else 0
-        syn_err = syn_rel_loss if syn_loss else 0
+        if self.options.syn_head_loss_bp:
+            syn_err = (syn_rel_loss +  syn_head_loss)/2 if syn_loss else 0
+        else:
+            syn_err = syn_rel_loss if syn_loss else 0
         err = mtl_coef * sem_err + (1 - mtl_coef) * syn_err
         err.scalar_value()
         loss = err.value()

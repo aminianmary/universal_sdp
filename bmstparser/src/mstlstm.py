@@ -551,7 +551,11 @@ class MSTParserLSTM:
         return t + 1, loss
 
     def decode(self, mini_batch):
-        h = self.recurrent_layer(mini_batch, train=False)
+        shared_h, sem_h = self.recurrent_layer(mini_batch, train=False)
+        if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
+            h =  concatenate([shared_h, sem_h])
+        else:
+            h = shared_h
 
         if self.options.task == 'multi' and self.options.sharing_mode == "shared":
             sem_head_scores, sem_rel_scores, syn_head_scores, syn_rel_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)

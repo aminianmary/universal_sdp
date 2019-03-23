@@ -55,7 +55,7 @@ class MSTParserLSTM:
                 'words, number of training words', len(w2i) + 2
         self.plookup = self.model.add_lookup_parameters((len(pos) + 2, options.pe))
 
-        # recurrent layer
+        # recurrent layer (SHARED BiLSTM in case of having task-specific recurrent layer)
         input_dim = edim + options.pe if self.options.use_pos else edim
         self.deep_lstms = BiRNNBuilder(options.layer, input_dim, options.rnn * 2, self.model, VanillaLSTMBuilder)
         for i in range(len(self.deep_lstms.builder_layers)):
@@ -64,9 +64,21 @@ class MSTParserLSTM:
             b1 = orthonormal_VanillaLSTMBuilder(builder[1], builder[1].spec[1], builder[1].spec[2])
             self.deep_lstms.builder_layers[i] = (b0, b1)
 
+        if options.task == 'multi' and  options.task_specific_recurrent_layer:
+            self.sem_deep_lstms = BiRNNBuilder(options.layer, input_dim, options.rnn * 2, self.model, VanillaLSTMBuilder)
+            for i in range(len(self.sem_deep_lstms.builder_layers)):
+                builder = self.sem_deep_lstms.builder_layers[i]
+                b0 = orthonormal_VanillaLSTMBuilder(builder[0], builder[0].spec[1], builder[0].spec[2])
+                b1 = orthonormal_VanillaLSTMBuilder(builder[1], builder[1].spec[1], builder[1].spec[2])
+                self.sem_deep_lstms.builder_layers[i] = (b0, b1)
+
         # initializer for the syntax and semantic higher layers.
-        w_mlp_arc = orthonormal_initializer(options.arc_mlp, options.rnn * 2)
-        w_mlp_label = orthonormal_initializer(options.label_mlp, options.rnn * 2)
+        fnn_dim = options.rnn * 2
+        if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
+                fnn_dim = options.rnn * 4
+
+        w_mlp_arc = orthonormal_initializer(options.arc_mlp, fnn_dim)
+        w_mlp_label = orthonormal_initializer(options.label_mlp, fnn_dim)
 
         self.need_syn_mlp = True if (self.options.task =='syntax' or self.options.task =='sem' or
                                  (self.options.task == 'multi' and self.options.sharing_mode == 'sum')) else False
@@ -80,16 +92,16 @@ class MSTParserLSTM:
 
         if self.need_syn_mlp:
             # higher layers for syntax
-            self.syn_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.syn_arc_mlp_head = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                               init=NumpyInitializer(w_mlp_arc))
             self.syn_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.syn_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.syn_label_mlp_head = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                 init=NumpyInitializer(w_mlp_label))
             self.syn_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-            self.syn_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.syn_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                              init=NumpyInitializer(w_mlp_arc))
             self.syn_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.syn_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.syn_label_mlp_dep = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                init=NumpyInitializer(w_mlp_label))
             self.syn_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
 
@@ -101,16 +113,16 @@ class MSTParserLSTM:
 
         if self.need_sem_mlp:
             # higher layers for semantics
-            self.sem_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.sem_arc_mlp_head = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                               init=NumpyInitializer(w_mlp_arc))
             self.sem_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.sem_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.sem_label_mlp_head = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                 init=NumpyInitializer(w_mlp_label))
             self.sem_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-            self.sem_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.sem_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                              init=NumpyInitializer(w_mlp_arc))
             self.sem_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.sem_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.sem_label_mlp_dep = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                init=NumpyInitializer(w_mlp_label))
             self.sem_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
 
@@ -121,16 +133,16 @@ class MSTParserLSTM:
                 init=ConstInitializer(0))
         if self.need_mtl:
             # higher layers for MTL
-            self.mtl_arc_mlp_head = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.mtl_arc_mlp_head = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                               init=NumpyInitializer(w_mlp_arc))
             self.mtl_arc_mlp_head_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.mtl_label_mlp_head = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.mtl_label_mlp_head = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                 init=NumpyInitializer(w_mlp_label))
             self.mtl_label_mlp_head_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
-            self.mtl_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, options.rnn * 2),
+            self.mtl_arc_mlp_dep = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                              init=NumpyInitializer(w_mlp_arc))
             self.mtl_arc_mlp_dep_b = self.model.add_parameters((options.arc_mlp,), init=ConstInitializer(0))
-            self.mtl_label_mlp_dep = self.model.add_parameters((options.label_mlp, options.rnn * 2),
+            self.mtl_label_mlp_dep = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                init=NumpyInitializer(w_mlp_label))
             self.mtl_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
 
@@ -191,7 +203,21 @@ class MSTParserLSTM:
         self.model.populate(filename)
 
     def bi_rnn(self, inputs, batch_size=None, dropout_x=0., dropout_h=0.):
+        # shared BiLSTM
         for fb, bb in self.deep_lstms.builder_layers:
+            f, b = fb.initial_state(), bb.initial_state()
+            fb.set_dropouts(dropout_x, dropout_h)
+            bb.set_dropouts(dropout_x, dropout_h)
+            if batch_size is not None:
+                fb.set_dropout_masks(batch_size)
+                bb.set_dropout_masks(batch_size)
+            fs, bs = f.transduce(inputs), b.transduce(reversed(inputs))
+            inputs = [concatenate([f, b]) for f, b in zip(fs, reversed(bs))]
+        return inputs
+
+    def sem_bi_rnn(self, inputs, batch_size=None, dropout_x=0., dropout_h=0.):
+        # semantic BiLSTM
+        for fb, bb in self.sem_deep_lstms.builder_layers:
             f, b = fb.initial_state(), bb.initial_state()
             fb.set_dropouts(dropout_x, dropout_h)
             bb.set_dropouts(dropout_x, dropout_h)
@@ -305,7 +331,15 @@ class MSTParserLSTM:
                             bilstm_recur_dropout if train else 0)
         h = dropout_dim(concatenate_cols(h_out), 1, bilstm_recur_dropout) if train else \
             concatenate_cols(h_out)
-        return h
+
+        sem_h = None
+        if self.options.task_specific_recurrent_layer:
+            sem_h_out = self.sem_bi_rnn(inputs, words.shape[1], bilstm_ff_dropout if train else 0,
+                                bilstm_recur_dropout if train else 0)
+            sem_h = dropout_dim(concatenate_cols(sem_h_out), 1, bilstm_recur_dropout) if train else \
+                concatenate_cols(sem_h_out)
+
+        return h, sem_h
 
     def build_syntax_graph(self, mini_batch, t=1):
         h = self.recurrent_layer(mini_batch, train=True)
@@ -486,7 +520,12 @@ class MSTParserLSTM:
         return arc_loss, rel_loss
 
     def build_mtl_graph(self, mini_batch, sharing_mode, t=1):
-        h = self.recurrent_layer(mini_batch, train=True)
+        shared_h, sem_h = self.recurrent_layer(mini_batch, train=True)
+        if self.options.task_specific_recurrent_layer:
+            h =  concatenate([shared_h, sem_h])
+        else:
+            h = shared_h
+
         sem_hs, sem_rs, syn_hs, syn_rs = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
         sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
         sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1])  if sem_loss is not None else (None,None)

@@ -172,7 +172,7 @@ if __name__ == '__main__':
                         'overall progress:' + str(round(100 * float(t) / options.t, 2)) + '% current progress:' + str(
                             round(100 * float(i + 1) / len(mini_batches), 2)) + '% loss=' + str(
                             closs / 10) + ' time: ' + str(time.time() - start) + '\n')
-                    if t % 100 == 0 and options.conll_dev:
+                    if t % 10 == 0 and options.conll_dev:
                         uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out')
 
                         if options.task == 'syntax':

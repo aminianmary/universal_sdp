@@ -81,14 +81,10 @@ class MSTParserLSTM:
         w_mlp_label = orthonormal_initializer(options.label_mlp, fnn_dim)
 
         self.need_syn_mlp = True if (self.options.task =='syntax' or self.options.task =='sem' or
-                                 (self.options.task == 'multi' and self.options.sharing_mode == 'sum')) else False
-        self.need_syn_bilinear = True if (self.options.task =='syntax' or self.options.task =='sem' or
-                                 (self.options.task == 'multi' and self.options.sharing_mode != 'separate')) else False
+                                 (self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
         self.need_sem_mlp = True if (self.options.task == 'sem' or
-                                 (self.options.task == 'multi' and self.options.sharing_mode == 'sum')) else False
-        self.need_sem_bilinear = True if (self.options.task == 'sem' or
-                                          (self.options.task == 'multi' and self.options.sharing_mode != 'separate')) else False
-        self.need_mtl = True if (self.options.task == 'multi' and self.options.sharing_mode != 'separate') else False
+                                 (self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
+        self.need_mtl_mlp = True if (self.options.task == 'multi' and self.options.sharing_mode != 'separate') else False
 
         if self.need_syn_mlp:
             # higher layers for syntax
@@ -105,12 +101,6 @@ class MSTParserLSTM:
                                                                init=NumpyInitializer(w_mlp_label))
             self.syn_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
 
-        if self.need_syn_bilinear:
-            self.syn_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
-            self.syn_u_label = self.model.add_parameters(
-                (len(self.idep_rels) * (options.label_mlp + 1), options.label_mlp + 1),
-                init=ConstInitializer(0))
-
         if self.need_sem_mlp:
             # higher layers for semantics
             self.sem_arc_mlp_head = self.model.add_parameters((options.arc_mlp, fnn_dim),
@@ -126,12 +116,7 @@ class MSTParserLSTM:
                                                                init=NumpyInitializer(w_mlp_label))
             self.sem_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
 
-        if self.need_sem_bilinear:
-            self.sem_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
-            self.sem_u_label = self.model.add_parameters(
-                (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
-                init=ConstInitializer(0))
-        if self.need_mtl:
+        if self.need_mtl_mlp:
             # higher layers for MTL
             self.mtl_arc_mlp_head = self.model.add_parameters((options.arc_mlp, fnn_dim),
                                                               init=NumpyInitializer(w_mlp_arc))
@@ -145,6 +130,16 @@ class MSTParserLSTM:
             self.mtl_label_mlp_dep = self.model.add_parameters((options.label_mlp, fnn_dim),
                                                                init=NumpyInitializer(w_mlp_label))
             self.mtl_label_mlp_dep_b = self.model.add_parameters((options.label_mlp,), init=ConstInitializer(0))
+
+        self.sem_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
+        self.sem_u_label = self.model.add_parameters(
+            (len(self.isem_rels) * (options.label_mlp + 1), options.label_mlp + 1),
+            init=ConstInitializer(0))
+        self.syn_w_arc = self.model.add_parameters((options.arc_mlp, options.arc_mlp + 1), init=ConstInitializer(0))
+        self.syn_u_label = self.model.add_parameters(
+            (len(self.idep_rels) * (options.label_mlp + 1), options.label_mlp + 1),
+            init=ConstInitializer(0))
+
 
         # dropout mask for input layers (word, external, POS, character)
         # dropout mask for word, external embeddings and Character is different from that of POS

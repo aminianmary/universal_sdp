@@ -370,7 +370,7 @@ class MSTParserLSTM:
         return arc_scores, rel_scores
 
     def build_semantic_graph(self, mini_batch, t=1):
-        h = self.recurrent_layer(mini_batch, train=True)
+        h, _ = self.recurrent_layer(mini_batch, train=True)
         head_scores, rel_scores = self.get_sem_scores(h, mini_batch, train=True)
 
         heads = np.reshape(mini_batch[5], (-1,), 'F')

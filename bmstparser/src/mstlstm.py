@@ -382,7 +382,7 @@ class MSTParserLSTM:
         flat_head_scores = reshape(head_scores, (1,), heads.shape[0])
         flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
         heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
-        flat_head_probs = logistic(flat_head_scores_to_use)
+        flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
         head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
         head_loss = sum_batches(head_losses) / n_head_tokens
 
@@ -391,18 +391,21 @@ class MSTParserLSTM:
         indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
         rels_to_use = [rels[i] for i in indices_to_use_for_rel]
         n_rel_tokens = len(indices_to_use_for_rel)
-        # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
-        matrix_rel_scores = reshape(rel_scores, (mini_batch[0].shape[0], len(self.isem_rels)),
-                                    mini_batch[0].shape[0] * mini_batch[0].shape[1])
-        # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
-        matrix_rel_scores_transpose = transpose(matrix_rel_scores)
-        # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
-        flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
-        # dim: (labels, len(indices_to_use_for_rel)
-        flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
-        flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
-        rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
-        rel_loss = sum_batches(rel_losses) / n_rel_tokens
+        if n_rel_tokens > 0:
+            # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
+            matrix_rel_scores = reshape(rel_scores, (mini_batch[0].shape[0], len(self.isem_rels)),
+                                        mini_batch[0].shape[0] * mini_batch[0].shape[1])
+            # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
+            matrix_rel_scores_transpose = transpose(matrix_rel_scores)
+            # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
+            flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
+            # dim: (labels, len(indices_to_use_for_rel)
+            flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
+            flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
+            rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
+            rel_loss = sum_batches(rel_losses) / n_rel_tokens
+        else:
+            rel_loss = 0
 
         coef = self.options.interpolation_coef
         err = coef * rel_loss + (1 - coef) * head_loss
@@ -472,7 +475,7 @@ class MSTParserLSTM:
         flat_head_scores = reshape(sem_hs, (1,), heads.shape[0])
         flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
         heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
-        flat_head_probs = logistic(flat_head_scores_to_use)
+        flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
         head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
         head_loss = sum_batches(head_losses) / n_head_tokens
 
@@ -481,18 +484,21 @@ class MSTParserLSTM:
         indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
         rels_to_use = [rels[i] for i in indices_to_use_for_rel]
         n_rel_tokens = len(indices_to_use_for_rel)
-        # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
-        matrix_rel_scores = reshape(sem_rs, (mini_batch[0].shape[0], len(self.isem_rels)),
-                                    mini_batch[0].shape[0] * mini_batch[0].shape[1])
-        # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
-        matrix_rel_scores_transpose = transpose(matrix_rel_scores)
-        # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
-        flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
-        # dim: (labels, len(indices_to_use_for_rel)
-        flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
-        flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
-        rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
-        rel_loss = sum_batches(rel_losses) / n_rel_tokens
+        if n_rel_tokens > 0:
+            # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
+            matrix_rel_scores = reshape(sem_rs, (mini_batch[0].shape[0], len(self.isem_rels)),
+                                        mini_batch[0].shape[0] * mini_batch[0].shape[1])
+            # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
+            matrix_rel_scores_transpose = transpose(matrix_rel_scores)
+            # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
+            flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
+            # dim: (labels, len(indices_to_use_for_rel)
+            flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
+            flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
+            rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
+            rel_loss = sum_batches(rel_losses) / n_rel_tokens
+        else:
+            rel_loss = 0
 
         return head_loss, rel_loss
 

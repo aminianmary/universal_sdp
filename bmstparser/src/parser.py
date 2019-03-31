@@ -87,7 +87,8 @@ if __name__ == '__main__':
     parser.add_option("--stop", type="int", dest="stop", default=10000)
     parser.add_option("--dynet-mem", type="int", dest="mem", default=0)
     parser.add_option("--dynet-autobatch", type="int", dest="dynet-autobatch", default=0)
-    parser.add_option("--dynet-gpus", action="store_true", dest="dynet-gpus", default=False,
+    parser.add_option("--dynet-gpus", type="int", dest="dynet-gpus", default=1)
+    parser.add_option("--dynet-gpu", action="store_true", dest="dynet-gpu", default=False,
                       help='Use GPU instead of cpu.')
     parser.add_option("--dynet-weight-decay", type="float", dest="dynet-weight-decay", default=3e-9)
     parser.add_option("--task", type="string", dest="task", help="options: syntax, sem, multi", default="syntax")

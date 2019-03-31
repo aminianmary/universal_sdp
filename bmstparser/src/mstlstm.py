@@ -416,7 +416,7 @@ class MSTParserLSTM:
         loss = err.value()
         if math.isnan(loss):
             print 'loss value:',loss
-            print 'head_loss, rel_loss', head_loss, rel_loss
+            print 'head_loss, rel_loss', head_loss.value(), rel_loss.value()
             print 'n_head_tokens, n_rel_tokens', n_head_tokens, n_rel_tokens
         err.backward()
         self.trainer.update()

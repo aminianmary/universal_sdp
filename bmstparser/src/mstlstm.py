@@ -378,13 +378,16 @@ class MSTParserLSTM:
         head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
         indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
         n_head_tokens = len(indices_to_use_for_head)
-        # dim: (1, ), sen_len[for-head]*sen_len[for-dep]* num_sen[batch-size]
-        flat_head_scores = reshape(head_scores, (1,), heads.shape[0])
-        flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
-        heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
-        flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
-        head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
-        head_loss = sum_batches(head_losses) / n_head_tokens
+        if n_head_tokens > 0:
+            # dim: (1, ), sen_len[for-head]*sen_len[for-dep]* num_sen[batch-size]
+            flat_head_scores = reshape(head_scores, (1,), heads.shape[0])
+            flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
+            heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
+            flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
+            head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
+            head_loss = sum_batches(head_losses) / n_head_tokens
+        else:
+            head_loss = 0
 
         rels = np.reshape(mini_batch[6], (-1,), 'F')
         rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')

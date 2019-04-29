@@ -85,8 +85,12 @@ def read_conll(fh):
             else:
                 sd = tok[8].strip()
                 sd_dic = get_sem_deps(sd)
+                if tok[6] == '_' or tok[6] == '?':
+                    dep_head =  -1
+                else:
+                    dep_head = int(tok[6])
                 tokens.append(ConllEntry(int(tok[0]), tok[1], tok[2], tok[3], tok[4], tok[5],
-                                         int(tok[6]) if tok[6] != '_' else -1, tok[7], sd_dic, tok[9]))
+                                         dep_head, tok[7], sd_dic, tok[9]))
     if len(tokens) > 1:
         yield tokens
 
@@ -216,8 +220,7 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
     dep_heads = np.array(
         [np.array(
             [batch[i][j].head if 0 < j < len(batch[i]) and batch[i][j].head >= 0 else 0 for i in range(len(batch))]) for
-            j
-            in range(cur_len)])
+            j in range(cur_len)])
     dep_relations = np.array([np.array(
         [model.dep_rels.get(batch[i][j].dep_relation, 0) if j < len(batch[i]) else model.PAD_REL for i in
          range(len(batch))]) for j in range(cur_len)])

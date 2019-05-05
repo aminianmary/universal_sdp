@@ -82,6 +82,7 @@ if __name__ == '__main__':
     parser.add_option("--no_anneal", action="store_false", dest="anneal", default=True)
     parser.add_option("--no_char", action="store_false", dest="use_char", default=True)
     parser.add_option("--no_pos", action="store_false", dest="use_pos", default=True)
+    parser.add_option("--no_lemma", action="store_false", dest="use_lemma", default=True)
     parser.add_option("--no_syn_head_loss_bp", action="store_false", dest="syn_head_loss_bp", default=True)
     parser.add_option("--task_specific_recurrent_layer", action="store_true", dest="task_specific_recurrent_layer", default=False)
     parser.add_option("--stop", type="int", dest="stop", default=10000)
@@ -106,11 +107,11 @@ if __name__ == '__main__':
     print 'Using external embedding:', options.external_embedding
     if options.predictFlag:
         with open(options.params, 'r') as paramsfp:
-            w2i, pos, dep_rels, sem_rels, chars, stored_opt = pickle.load(paramsfp)
+            w2i, l2i, pos, dep_rels, sem_rels, chars, stored_opt = pickle.load(paramsfp)
         stored_opt.external_embedding = options.external_embedding
         print 'stored options:', stored_opt
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, chars, stored_opt)
+        parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, l2i, chars, stored_opt)
         parser.Load(options.model)
         ts = time.time()
         print 'loading buckets'
@@ -124,14 +125,14 @@ if __name__ == '__main__':
         print 'Finished predicting test.', te - ts, 'seconds.'
     else:
         print 'Preparing vocab'
-        w2i, pos, dep_rels, sem_rels, chars = utils.vocab(options.conll_train, options.min_count)
+        w2i, l2i, pos, dep_rels, sem_rels, chars = utils.vocab(options.conll_train, options.min_count)
         if not os.path.isdir(options.output): os.mkdir(options.output)
         with open(os.path.join(options.output, options.params), 'w') as paramsfp:
-            pickle.dump((w2i, pos, dep_rels, sem_rels, chars, options), paramsfp)
+            pickle.dump((w2i, l2i, pos, dep_rels, sem_rels, chars, options), paramsfp)
         print 'Finished collecting vocab'
 
         print 'Initializing lstm mstparser:'
-        parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, chars, options)
+        parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, l2i, chars, options)
         best_acc = -float('inf')
         t, epoch = 0, 1
         train_data = list(utils.read_conll(open(options.conll_train, 'r')))

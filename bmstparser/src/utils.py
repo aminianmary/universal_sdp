@@ -43,6 +43,7 @@ class ConllEntry:
 
 def vocab(conll_path, min_count):
     wordsCount = Counter()
+    lemmaCount = Counter()
     posCount = Counter()
     depRelCount = Counter()
     semRelCount = Counter()
@@ -50,6 +51,7 @@ def vocab(conll_path, min_count):
     with open(conll_path, 'r') as conllFP:
         for sentence in read_conll(conllFP):
             wordsCount.update([node.norm for node in sentence if isinstance(node, ConllEntry)])
+            lemmaCount.update([node.lemma for node in sentence if isinstance(node, ConllEntry)])
             posCount.update([node.pos for node in sentence if isinstance(node, ConllEntry)])
             depRelCount.update([node.dep_relation for node in sentence if isinstance(node, ConllEntry)])
             for node in sentence:
@@ -66,8 +68,12 @@ def vocab(conll_path, min_count):
     for w in wordsCount.keys():
         if wordsCount[w] >= min_count:
             words.add(w)
+    lemmas = set()
+    for w in lemmaCount.keys():
+        if lemmaCount[w] >= min_count:
+            lemmas.add(w)
     return (
-        {w: i for i, w in enumerate(words)}, list(posCount.keys()), list(depRelCount.keys()), list(semRelCount.keys()),
+        {w: i for i, w in enumerate(words)}, {l: i for i, l in enumerate(lemmas)} ,list(posCount.keys()), list(depRelCount.keys()), list(semRelCount.keys()),
         list(chars))
 
 
@@ -211,6 +217,9 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
     words = np.array([np.array(
         [model.vocab.get(batch[i][j].norm, 0) if j < len(batch[i]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
+    lemmas = np.array([np.array(
+        [model.lemma_vocab.get(batch[i][j].lemma, 0) if j < len(batch[i]) else model.PAD for i in
+         range(len(batch))]) for j in range(cur_len)])
     pwords = np.array([np.array(
         [model.evocab.get(batch[i][j].norm, 0) if j < len(batch[i]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
@@ -302,7 +311,7 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
         [1 if 0 < j < len(batch[i]) and (batch[i][j].head >= 0 or not is_train) else 0 for i in range(len(batch))]) for
         j in
         range(cur_len)])
-    mini_batches.append((words, pwords, pos, dep_heads, dep_relations, sem_heads, sem_rels, chars, sem_head_masks,
+    mini_batches.append((words, lemmas , pwords, pos, dep_heads, dep_relations, sem_heads, sem_rels, chars, sem_head_masks,
                          sem_rel_masks, dep_masks))
 
 def is_punc(pos):

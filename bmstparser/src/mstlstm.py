@@ -8,7 +8,7 @@ from linalg import *
 
 
 class MSTParserLSTM:
-    def __init__(self, pos, dep_rels, sem_rels, w2i, chars, options):
+    def __init__(self, pos, dep_rels, sem_rels, w2i, l2i , chars, options):
         self.model = Model()
         self.PAD = 1
         self.options = options
@@ -16,6 +16,7 @@ class MSTParserLSTM:
         self.activations = {'tanh': tanh, 'sigmoid': logistic, 'relu': rectify, 'leaky': (lambda x: bmax(.1 * x, x))}
         self.activation = self.activations[options.activation]
         self.vocab = {word: ind + 2 for word, ind in w2i.iteritems()}
+        self.lemma_vocab = {lemma: ind + 2 for lemma, ind in l2i.iteritems()}
         self.pos = {word: ind + 2 for ind, word in enumerate(pos)}
         self.dep_rels = {dep_rel: ind + 1 for ind, dep_rel in enumerate(dep_rels)}
         self.sem_rels = {sem_rel: ind + 1 for ind, sem_rel in enumerate(sem_rels)}
@@ -33,6 +34,7 @@ class MSTParserLSTM:
 
         # embedding layer
         self.wlookup = self.model.add_lookup_parameters((len(w2i) + 2, edim))
+        self.lemlookup = self.model.add_lookup_parameters((len(l2i) + 2, edim))
         self.elookup = None
         if options.external_embedding is not None:
             external_embedding_fp = gzip.open(options.external_embedding, 'r')
@@ -285,19 +287,12 @@ class MSTParserLSTM:
     def char_lstm_output(self, cembed, train=False, batch_size=None):
         fb, bb = self.char_lstm.builder_layers[0][0], self.char_lstm.builder_layers[0][1]
         f, b = fb.initial_state(), bb.initial_state()
-        # todo not sure if it helps?!
-        #if train:
-        #    fb.set_dropouts(self.options.charlstm_dropout, self.options.charlstm_dropout)
-        #    bb.set_dropouts(self.options.charlstm_dropout, self.options.charlstm_dropout)
-        #if batch_size is not None:
-        #    fb.set_dropout_masks(batch_size)
-        #    bb.set_dropout_masks(batch_size)
         char_fwd, char_bckd = f.transduce(cembed)[-1], b.transduce(reversed(cembed))[-1]
 
         return (char_fwd, char_bckd)
 
     def recurrent_layer(self, sens, train):
-        words, pwords, pos, chars = sens[0], sens[1], sens[2], sens[7]
+        words, lemmas, pwords, pos, chars = sens[0], sens[1], sens[2], sens[3], sens[8]
         if self.options.use_char:
             cembed = [lookup_batch(self.clookup, c) for c in chars]
             char_fwd, char_bckd = self.char_lstm_output(cembed, train, words.shape[0])
@@ -306,12 +301,22 @@ class MSTParserLSTM:
             for i in range(words.shape[0]):
                 cnn_reps[i] = pick_batch(crnn, [i * words.shape[1] + j for j in range(words.shape[1])], 1)
 
-            wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for i
+            if self.options.use_lemma:
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for i
+                      in range(len(words))]
+            else:
+                wembed = [lookup_batch(self.wlookup, words[i])  + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for i
                       in range(len(words))]
         else:
-            wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.elookup, pwords[i]) for i in
+            if self.options.use_lemma:
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(self.elookup, pwords[i]) for i in
                       range(len(words))]
+            else:
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.elookup, pwords[i]) for i in
+                      range(len(words))]
+
         posembed = [lookup_batch(self.plookup, pos[i]) for i in range(len(pos))] if self.options.use_pos else None
+
         if not train:
             inputs = [concatenate([w, pos]) for w, pos in zip(wembed, posembed)] if self.options.use_pos else wembed
         else:
@@ -346,9 +351,9 @@ class MSTParserLSTM:
         masks = np.reshape(mini_batch[-1], (-1,), 'F')
         mask_1D_tensor = inputTensor(masks, batched=True)
         n_tokens = np.sum(masks)
-        heads = np.reshape(mini_batch[3], (-1,), 'F')
+        heads = np.reshape(mini_batch[4], (-1,), 'F')
         partial_rel_scores = pick_batch(flat_rel_scores, heads)
-        gold_relations = np.reshape(mini_batch[4], (-1,), 'F')
+        gold_relations = np.reshape(mini_batch[5], (-1,), 'F')
         arc_losses = pickneglogsoftmax_batch(flat_scores, heads)
         arc_loss = sum_batches(arc_losses * mask_1D_tensor) / n_tokens
         rel_losses = pickneglogsoftmax_batch(partial_rel_scores, gold_relations)
@@ -373,7 +378,7 @@ class MSTParserLSTM:
         h, _ = self.recurrent_layer(mini_batch, train=True)
         head_scores, rel_scores = self.get_sem_scores(h, mini_batch, train=True)
 
-        heads = np.reshape(mini_batch[5], (-1,), 'F')
+        heads = np.reshape(mini_batch[6], (-1,), 'F')
         heads_tensor = inputTensor(heads, batched=True)
         head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
         indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
@@ -389,7 +394,7 @@ class MSTParserLSTM:
         else:
             head_loss = 0
 
-        rels = np.reshape(mini_batch[6], (-1,), 'F')
+        rels = np.reshape(mini_batch[7], (-1,), 'F')
         rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')
         indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
         rels_to_use = [rels[i] for i in indices_to_use_for_rel]
@@ -469,7 +474,7 @@ class MSTParserLSTM:
         return sem_hs, sem_rs, syn_hs, syn_rs
 
     def sem_loss(self, mini_batch, sem_hs, sem_rs):
-        heads = np.reshape(mini_batch[5], (-1,), 'F')
+        heads = np.reshape(mini_batch[6], (-1,), 'F')
         heads_tensor = inputTensor(heads, batched=True)
         head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
         indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
@@ -484,7 +489,7 @@ class MSTParserLSTM:
         head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
         head_loss = sum_batches(head_losses) / n_head_tokens
 
-        rels = np.reshape(mini_batch[6], (-1,), 'F')
+        rels = np.reshape(mini_batch[7], (-1,), 'F')
         rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')
         indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
         rels_to_use = [rels[i] for i in indices_to_use_for_rel]
@@ -516,9 +521,9 @@ class MSTParserLSTM:
         flat_rel_scores = reshape(syn_rs, (mini_batch[0].shape[0], len(self.idep_rels)),
                                   mini_batch[0].shape[0] * mini_batch[0].shape[1])
         mask_1D_tensor = inputTensor(masks, batched=True)
-        heads = np.reshape(mini_batch[3], (-1,), 'F')
+        heads = np.reshape(mini_batch[4], (-1,), 'F')
         partial_rel_scores = pick_batch(flat_rel_scores, heads)
-        gold_relations = np.reshape(mini_batch[4], (-1,), 'F')
+        gold_relations = np.reshape(mini_batch[5], (-1,), 'F')
         arc_losses = pickneglogsoftmax_batch(flat_scores, heads)
         arc_loss = sum_batches(arc_losses * mask_1D_tensor) / n_tokens
         rel_losses = pickneglogsoftmax_batch(partial_rel_scores, gold_relations)
@@ -602,7 +607,7 @@ class MSTParserLSTM:
                                                (sem_head_score_values.shape[0], sem_head_score_values.shape[1], 1))
             sem_rel_argmax = np.reshape(sem_rel_argmax, (sem_rel_argmax.shape[0], sem_rel_argmax.shape[1], 1))
 
-        assert sem_head_score_values.shape == mini_batch[5].shape
+        assert sem_head_score_values.shape == mini_batch[6].shape
         sem_mask = mini_batch[-3]
         sem_heads = np.array(
             [np.array(

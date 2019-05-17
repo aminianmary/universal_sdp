@@ -8,7 +8,7 @@ from linalg import *
 
 
 class MSTParserLSTM:
-    def __init__(self, pos, dep_rels, sem_rels, w2i, l2i , chars, options):
+    def __init__(self, pos, dep_rels, sem_rels, w2i, l2i, chars, options):
         self.model = Model()
         self.PAD = 1
         self.options = options
@@ -66,8 +66,9 @@ class MSTParserLSTM:
             b1 = orthonormal_VanillaLSTMBuilder(builder[1], builder[1].spec[1], builder[1].spec[2])
             self.deep_lstms.builder_layers[i] = (b0, b1)
 
-        if options.task == 'multi' and  options.task_specific_recurrent_layer:
-            self.sem_deep_lstms = BiRNNBuilder(options.layer, input_dim, options.rnn * 2, self.model, VanillaLSTMBuilder)
+        if options.task == 'multi' and options.task_specific_recurrent_layer:
+            self.sem_deep_lstms = BiRNNBuilder(options.layer, input_dim, options.rnn * 2, self.model,
+                                               VanillaLSTMBuilder)
             for i in range(len(self.sem_deep_lstms.builder_layers)):
                 builder = self.sem_deep_lstms.builder_layers[i]
                 b0 = orthonormal_VanillaLSTMBuilder(builder[0], builder[0].spec[1], builder[0].spec[2])
@@ -77,16 +78,19 @@ class MSTParserLSTM:
         # initializer for the syntax and semantic higher layers.
         fnn_dim = options.rnn * 2
         if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
-                fnn_dim = options.rnn * 4
+            fnn_dim = options.rnn * 4
 
         w_mlp_arc = orthonormal_initializer(options.arc_mlp, fnn_dim)
         w_mlp_label = orthonormal_initializer(options.label_mlp, fnn_dim)
 
-        self.need_syn_mlp = True if (self.options.task =='syntax' or self.options.task =='sem' or
-                                 (self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
+        self.need_syn_mlp = True if (self.options.task == 'syntax' or self.options.task == 'sem' or
+                                     (
+                                         self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
         self.need_sem_mlp = True if (self.options.task == 'sem' or
-                                 (self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
-        self.need_mtl_mlp = True if (self.options.task == 'multi' and self.options.sharing_mode != 'separate') else False
+                                     (
+                                         self.options.task == 'multi' and self.options.sharing_mode != 'shared')) else False
+        self.need_mtl_mlp = True if (
+            self.options.task == 'multi' and self.options.sharing_mode != 'separate') else False
 
         if self.need_syn_mlp:
             # higher layers for syntax
@@ -142,7 +146,6 @@ class MSTParserLSTM:
             (len(self.idep_rels) * (options.label_mlp + 1), options.label_mlp + 1),
             init=ConstInitializer(0))
 
-
         # dropout mask for input layers (word, external, POS, character)
         # dropout mask for word, external embeddings and Character is different from that of POS
         def _dropout_mask_generator(seq_len, batch_size):
@@ -191,7 +194,8 @@ class MSTParserLSTM:
         H2 = concatenate([HL, inputTensor(np.ones((1, HL.dim()[0][1]), dtype=np.float32))])
         M2 = concatenate([ML, inputTensor(np.ones((1, ML.dim()[0][1]), dtype=np.float32))])
         h, m = transpose(H2), transpose(M2)
-        return reshape(transpose(h[i]) * self.syn_u_label.expr(), (len(self.idep_rels), self.options.label_mlp + 1)) * m[j]
+        return reshape(transpose(h[i]) * self.syn_u_label.expr(), (len(self.idep_rels), self.options.label_mlp + 1)) * \
+               m[j]
 
     def Save(self, filename):
         self.model.save(filename)
@@ -235,7 +239,9 @@ class MSTParserLSTM:
         label_dropout = self.options.label_dropout
 
         if train:
-            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1,
+                                                                                                       label_dropout), dropout_dim(
+                ML, 1, label_dropout)
         return H, M, HL, ML
 
     def fnn_sem(self, h, train):
@@ -248,7 +254,10 @@ class MSTParserLSTM:
         label_dropout = self.options.label_dropout
 
         if train:
-            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), \
+                           dropout_dim(M, 1, arc_dropout), \
+                           dropout_dim(HL, 1, label_dropout), \
+                           dropout_dim(ML, 1, label_dropout)
         return H, M, HL, ML
 
     def fnn_mtl(self, h, train):
@@ -261,27 +270,38 @@ class MSTParserLSTM:
         label_dropout = self.options.label_dropout
 
         if train:
-            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1,
+                                                                                                       label_dropout), dropout_dim(
+                ML, 1, label_dropout)
         return H, M, HL, ML
-
 
     def fnn_mtl_sum(self, h, task, train):
         if task == 'syntax':
-            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.syn_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr() + self.syn_arc_mlp_head.expr(), h]))
-            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.syn_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr() + self.syn_arc_mlp_dep.expr(), h]))
-            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.syn_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr() + self.syn_label_mlp_head.expr(), h]))
-            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.syn_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr() + self.syn_label_mlp_dep.expr(), h]))
+            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.syn_arc_mlp_head_b.expr(),
+                                                  self.mtl_arc_mlp_head.expr() + self.syn_arc_mlp_head.expr(), h]))
+            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.syn_arc_mlp_dep_b.expr(),
+                                                  self.mtl_arc_mlp_dep.expr() + self.syn_arc_mlp_dep.expr(), h]))
+            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.syn_label_mlp_head_b.expr(),
+                                                   self.mtl_label_mlp_head.expr() + self.syn_label_mlp_head.expr(), h]))
+            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.syn_label_mlp_dep_b.expr(),
+                                                   self.mtl_label_mlp_dep.expr() + self.syn_label_mlp_dep.expr(), h]))
         elif task == 'sem':
-            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.sem_arc_mlp_head_b.expr(), self.mtl_arc_mlp_head.expr() + self.sem_arc_mlp_head.expr(), h]))
-            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.sem_arc_mlp_dep_b.expr(), self.mtl_arc_mlp_dep.expr() + self.sem_arc_mlp_dep.expr(), h]))
-            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.sem_label_mlp_head_b.expr(), self.mtl_label_mlp_head.expr() +  self.sem_label_mlp_head.expr(), h]))
-            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.sem_label_mlp_dep_b.expr(), self.mtl_label_mlp_dep.expr() + self.sem_label_mlp_dep.expr(), h]))
+            H = self.activation(affine_transform([self.mtl_arc_mlp_head_b.expr() + self.sem_arc_mlp_head_b.expr(),
+                                                  self.mtl_arc_mlp_head.expr() + self.sem_arc_mlp_head.expr(), h]))
+            M = self.activation(affine_transform([self.mtl_arc_mlp_dep_b.expr() + self.sem_arc_mlp_dep_b.expr(),
+                                                  self.mtl_arc_mlp_dep.expr() + self.sem_arc_mlp_dep.expr(), h]))
+            HL = self.activation(affine_transform([self.mtl_label_mlp_head_b.expr() + self.sem_label_mlp_head_b.expr(),
+                                                   self.mtl_label_mlp_head.expr() + self.sem_label_mlp_head.expr(), h]))
+            ML = self.activation(affine_transform([self.mtl_label_mlp_dep_b.expr() + self.sem_label_mlp_dep_b.expr(),
+                                                   self.mtl_label_mlp_dep.expr() + self.sem_label_mlp_dep.expr(), h]))
 
         arc_dropout = self.options.arc_dropout
         label_dropout = self.options.label_dropout
 
         if train:
-            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1, label_dropout), dropout_dim(ML, 1, label_dropout)
+            H, M, HL, ML = dropout_dim(H, 1, arc_dropout), dropout_dim(M, 1, arc_dropout), dropout_dim(HL, 1,
+                                                                                                       label_dropout), dropout_dim(
+                ML, 1, label_dropout)
         return H, M, HL, ML
 
     def char_lstm_output(self, cembed, train=False, batch_size=None):
@@ -302,18 +322,21 @@ class MSTParserLSTM:
                 cnn_reps[i] = pick_batch(crnn, [i * words.shape[1] + j for j in range(words.shape[1])], 1)
 
             if self.options.use_lemma:
-                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for i
-                      in range(len(words))]
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(
+                    self.elookup, pwords[i]) + cnn_reps[i] for i
+                          in range(len(words))]
             else:
-                wembed = [lookup_batch(self.wlookup, words[i])  + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for i
-                      in range(len(words))]
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.elookup, pwords[i]) + cnn_reps[i] for
+                          i
+                          in range(len(words))]
         else:
             if self.options.use_lemma:
-                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(self.elookup, pwords[i]) for i in
-                      range(len(words))]
+                wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.lemlookup, lemmas[i]) + lookup_batch(
+                    self.elookup, pwords[i]) for i in
+                          range(len(words))]
             else:
                 wembed = [lookup_batch(self.wlookup, words[i]) + lookup_batch(self.elookup, pwords[i]) for i in
-                      range(len(words))]
+                          range(len(words))]
 
         posembed = [lookup_batch(self.plookup, pos[i]) for i in range(len(pos))] if self.options.use_pos else None
 
@@ -335,7 +358,7 @@ class MSTParserLSTM:
         sem_h = None
         if self.options.task_specific_recurrent_layer:
             sem_h_out = self.sem_bi_rnn(inputs, words.shape[1], bilstm_ff_dropout if train else 0,
-                                bilstm_recur_dropout if train else 0)
+                                        bilstm_recur_dropout if train else 0)
             sem_h = dropout_dim(concatenate_cols(sem_h_out), 1, bilstm_recur_dropout) if train else \
                 concatenate_cols(sem_h_out)
 
@@ -376,51 +399,14 @@ class MSTParserLSTM:
 
     def build_semantic_graph(self, mini_batch, t=1):
         h, _ = self.recurrent_layer(mini_batch, train=True)
-        head_scores, rel_scores = self.get_sem_scores(h, mini_batch, train=True)
-
-        heads = np.reshape(mini_batch[6], (-1,), 'F')
-        heads_tensor = inputTensor(heads, batched=True)
-        head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
-        indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
-        n_head_tokens = len(indices_to_use_for_head)
-        if n_head_tokens > 0:
-            # dim: (1, ), sen_len[for-head]*sen_len[for-dep]* num_sen[batch-size]
-            flat_head_scores = reshape(head_scores, (1,), heads.shape[0])
-            flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
-            heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
-            flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
-            head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
-            head_loss = sum_batches(head_losses) / n_head_tokens
-        else:
-            head_loss = 0
-
-        rels = np.reshape(mini_batch[7], (-1,), 'F')
-        rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')
-        indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
-        rels_to_use = [rels[i] for i in indices_to_use_for_rel]
-        n_rel_tokens = len(indices_to_use_for_rel)
-        if n_rel_tokens > 0:
-            # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
-            matrix_rel_scores = reshape(rel_scores, (mini_batch[0].shape[0], len(self.isem_rels)),
-                                        mini_batch[0].shape[0] * mini_batch[0].shape[1])
-            # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
-            matrix_rel_scores_transpose = transpose(matrix_rel_scores)
-            # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
-            flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
-            # dim: (labels, len(indices_to_use_for_rel)
-            flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
-            flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
-            rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
-            rel_loss = sum_batches(rel_losses) / n_rel_tokens
-        else:
-            rel_loss = 0
-
+        head_scores, rel_scores, _, _ = self.get_sem_scores(h, mini_batch, train=True)
+        head_loss, rel_loss = self.sem_loss(mini_batch, head_scores, rel_scores)
         coef = self.options.interpolation_coef
         err = coef * rel_loss + (1 - coef) * head_loss
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):
-            print 'loss value:',loss
+            print 'loss value:', loss
             print 'head_loss, rel_loss', head_loss.value(), rel_loss.value()
             print 'n_head_tokens, n_rel_tokens', n_head_tokens, n_rel_tokens
         err.backward()
@@ -432,16 +418,32 @@ class MSTParserLSTM:
         H, M, HL, ML = self.fnn_sem(h, train)
         head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
-        rel_scores = self.bilinear(ML, self.sem_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
-                                   mini_batch[0].shape[1], len(self.isem_rels), True, True)
-        return head_scores, rel_scores
+        rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-2])
+        return head_scores, rel_scores, HL, ML
+
+    def sem_bilinear(self, HL, ML, shape_0, rel_h_m_indices):
+        """
+        Similar to bilinear, but for sparse computation (memory efficient) of semantic roles.
+        """
+        head_indices, modifier_indices = rel_h_m_indices
+        if len(head_indices) == 0:
+            return None
+        HL_w_b = concatenate([HL, inputTensor(np.ones((1, shape_0), dtype=np.float32))])
+        ML_w_b = concatenate([ML, inputTensor(np.ones((1, shape_0), dtype=np.float32))])
+        HL_reshape = transpose(reshape(HL_w_b, (HL_w_b.dim()[0][0], HL_w_b.dim()[0][1] * HL_w_b.dim()[1])))
+        ML_reshape = transpose(reshape(ML_w_b, (ML_w_b.dim()[0][0], ML_w_b.dim()[0][1] * ML_w_b.dim()[1])))
+        HL_to_use = [HL_reshape[hi] for hi in head_indices]
+        ML_to_use = [ML_reshape[mi] for mi in modifier_indices]
+        rel_scores = concatenate_to_batch(
+            [reshape(self.sem_u_label.expr() * m, (len(self.isem_rels), m.dim()[0][0])) * h for m, h in
+             zip(ML_to_use, HL_to_use)])
+        return rel_scores
 
     def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
         if mtl_task == 'sem':
             head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                         mini_batch[0].shape[1], 1, True, False)
-            rel_scores = self.bilinear(ML, self.sem_u_label.expr(), HL, self.options.label_mlp, mini_batch[0].shape[0],
-                                   mini_batch[0].shape[1], len(self.isem_rels), True, True)
+            rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-2])
         elif mtl_task == 'syntax':
             head_scores = self.bilinear(M, self.syn_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                         mini_batch[0].shape[1], 1, True, False)
@@ -457,23 +459,23 @@ class MSTParserLSTM:
             sem_hs, sem_rs = self.get_scores(H, M, HL, ML, mini_batch, 'sem')
             syn_hs, syn_rs = self.get_scores(H, M, HL, ML, mini_batch, 'syntax')
         elif mlp_mode == 'separate':
-            sem_hs, sem_rs = self.get_sem_scores(h, mini_batch, train)
+            sem_hs, sem_rs, HL, ML = self.get_sem_scores(h, mini_batch, train)
             syn_hs_, syn_rs_ = self.get_syntax_scores(h, mini_batch, train)
             syn_hs = reshape(syn_hs_, (mini_batch[0].shape[0],),
-                                  mini_batch[0].shape[0] * mini_batch[0].shape[1])
+                             mini_batch[0].shape[0] * mini_batch[0].shape[1])
             syn_rs = reshape(syn_rs_, (mini_batch[0].shape[0], len(self.idep_rels)),
-                                      mini_batch[0].shape[0] * mini_batch[0].shape[1])
+                             mini_batch[0].shape[0] * mini_batch[0].shape[1])
         elif mlp_mode == 'sum':
             # shared scores
             H_syn, M_syn, HL_syn, ML_syn = self.fnn_mtl_sum(h, 'syntax', train)
-            H_sem, M_sem, HL_sem, ML_sem = self.fnn_mtl_sum(h, 'sem', train)
+            H_sem, M_sem, HL, ML = self.fnn_mtl_sum(h, 'sem', train)
 
             sem_hs, sem_rs = self.get_scores(H_sem, M_sem, HL_sem, ML_sem, mini_batch, 'sem')
             syn_hs, syn_rs = self.get_scores(H_syn, M_syn, HL_syn, ML_syn, mini_batch, 'syntax')
 
-        return sem_hs, sem_rs, syn_hs, syn_rs
+        return sem_hs, sem_rs, syn_hs, syn_rs, HL, ML
 
-    def sem_loss(self, mini_batch, sem_hs, sem_rs):
+    def sem_loss(self, mini_batch, sem_head_scores, sem_rel_scores):
         heads = np.reshape(mini_batch[6], (-1,), 'F')
         heads_tensor = inputTensor(heads, batched=True)
         head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
@@ -482,31 +484,17 @@ class MSTParserLSTM:
             return
         n_head_tokens = len(indices_to_use_for_head)
 
-        flat_head_scores = reshape(sem_hs, (1,), heads.shape[0])
+        flat_head_scores = reshape(sem_head_scores, (1,), heads.shape[0])
         flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
         heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
         flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
         head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
         head_loss = sum_batches(head_losses) / n_head_tokens
 
-        rels = np.reshape(mini_batch[7], (-1,), 'F')
-        rel_masks = np.reshape(mini_batch[-2], (-1,), 'F')
-        indices_to_use_for_rel = [i[0] for (i, mask) in np.ndenumerate(rel_masks) if mask == 1]
-        rels_to_use = [rels[i] for i in indices_to_use_for_rel]
-        n_rel_tokens = len(indices_to_use_for_rel)
-        if n_rel_tokens > 0:
-            # dim: (sen_len[for-head], labels), sen_len[for-dep]*num_sen[batch-size]
-            matrix_rel_scores = reshape(sem_rs, (mini_batch[0].shape[0], len(self.isem_rels)),
-                                        mini_batch[0].shape[0] * mini_batch[0].shape[1])
-            # dim: (labels, sen_len[for-head]), sen_len[for-dep]*num_sen[batch-size]
-            matrix_rel_scores_transpose = transpose(matrix_rel_scores)
-            # dim: (labels, ), sen_len[for-head]*sen_len[for-dep]*num_sen[batch-size]
-            flat_rel_scores = reshape(matrix_rel_scores_transpose, (len(self.isem_rels),), rel_masks.shape[0])
-            # dim: (labels, len(indices_to_use_for_rel)
-            flat_rel_scores_reshape = transpose(reshape(flat_rel_scores, (len(self.isem_rels), flat_rel_scores.dim()[1])))
-            flat_rel_scores_to_use = pick_batch(flat_rel_scores_reshape, indices_to_use_for_rel)
-            rel_losses = pickneglogsoftmax_batch(flat_rel_scores_to_use, rels_to_use)
-            rel_loss = sum_batches(rel_losses) / n_rel_tokens
+        gold_rels = mini_batch[7]
+        if len(gold_rels) > 0:
+            rel_losses = pickneglogsoftmax_batch(sem_rel_scores, gold_rels)
+            rel_loss = sum_batches(rel_losses) / len(gold_rels)
         else:
             rel_loss = 0
 
@@ -533,29 +521,29 @@ class MSTParserLSTM:
     def build_mtl_graph(self, mini_batch, sharing_mode, t=1):
         shared_h, sem_h = self.recurrent_layer(mini_batch, train=True)
         if self.options.task_specific_recurrent_layer:
-            h =  concatenate([shared_h, sem_h])
+            h = concatenate([shared_h, sem_h])
         else:
             h = shared_h
 
-        sem_hs, sem_rs, syn_hs, syn_rs = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
+        sem_hs, sem_rs, syn_hs, syn_rs, _, _ = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
         sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
-        sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1])  if sem_loss is not None else (None,None)
+        sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1]) if sem_loss is not None else (None, None)
         syn_loss = self.syn_loss(mini_batch, syn_hs, syn_rs)
-        syn_head_loss, syn_rel_loss = (syn_loss[0], syn_loss[1]) if syn_loss is not None else (None,None)
+        syn_head_loss, syn_rel_loss = (syn_loss[0], syn_loss[1]) if syn_loss is not None else (None, None)
 
         coef = self.options.interpolation_coef
         mtl_coef = self.options.mtl_coef
         sem_err = coef * sem_rel_loss + (1 - coef) * sem_head_loss if sem_loss else 0
         # todo change to have better performance
         if self.options.syn_head_loss_bp:
-            syn_err = (syn_rel_loss +  syn_head_loss)/2 if syn_loss else 0
+            syn_err = (syn_rel_loss + syn_head_loss) / 2 if syn_loss else 0
         else:
             syn_err = syn_rel_loss if syn_loss else 0
         err = mtl_coef * sem_err + (1 - mtl_coef) * syn_err
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):
-            print 'loss value:' ,loss
+            print 'loss value:', loss
         err.backward()
         self.trainer.update()
         renew_cg()
@@ -564,28 +552,31 @@ class MSTParserLSTM:
     def decode(self, mini_batch):
         shared_h, sem_h = self.recurrent_layer(mini_batch, train=False)
         if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
-            h =  concatenate([shared_h, sem_h])
+            h = concatenate([shared_h, sem_h])
         else:
             h = shared_h
 
         if self.options.task == 'multi' and self.options.sharing_mode == "shared":
-            sem_head_scores, sem_rel_scores, syn_head_scores, syn_rel_scores = self.get_mtl_scores(h, mini_batch, self.options.sharing_mode , train=False)
+            sem_head_scores, _, syn_head_scores, syn_rel_scores, HL, ML = self.get_mtl_scores(h, mini_batch,
+                                                                                              self.options.sharing_mode,
+                                                                                              train=False)
             flat_syn_head_scores = reshape(syn_head_scores, (mini_batch[0].shape[0],),
-                                  mini_batch[0].shape[0] * mini_batch[0].shape[1])
+                                           mini_batch[0].shape[0] * mini_batch[0].shape[1])
             flat_syn_rel_scores = reshape(syn_rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
-                                      mini_batch[0].shape[0] * mini_batch[0].shape[1])
+                                          mini_batch[0].shape[0] * mini_batch[0].shape[1])
         else:
             syn_head_scores, syn_rel_scores = self.get_syntax_scores(h, mini_batch, train=False)
             flat_syn_head_scores = reshape(syn_head_scores, (mini_batch[0].shape[0],),
-                                  mini_batch[0].shape[0] * mini_batch[0].shape[1])
+                                           mini_batch[0].shape[0] * mini_batch[0].shape[1])
             flat_syn_rel_scores = reshape(syn_rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
-                                      mini_batch[0].shape[0] * mini_batch[0].shape[1])
-            sem_head_scores, sem_rel_scores = self.get_sem_scores(h, mini_batch, train=False)
+                                          mini_batch[0].shape[0] * mini_batch[0].shape[1])
+            sem_head_scores, _, HL, ML = self.get_sem_scores(h, mini_batch, train=False)
 
         # Syntax
         syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syn_head_scores).npvalue(), (
             mini_batch[0].shape[0], mini_batch[0].shape[0], mini_batch[0].shape[1]), 'F'))
-        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syn_rel_scores)).npvalue(),(len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
+        syntax_rel_probs = np.transpose(np.reshape(softmax(transpose(flat_syn_rel_scores)).npvalue(),
+                                                   (len(self.idep_rels), mini_batch[0].shape[0], mini_batch[0].shape[0],
                                                     mini_batch[0].shape[1]), 'F'))
         syntax_outputs = []
 
@@ -601,11 +592,9 @@ class MSTParserLSTM:
 
         # Semantics
         sem_head_score_values = sem_head_scores.npvalue()
-        sem_rel_argmax = np.argmax(sem_rel_scores.npvalue(), axis=1)
         if sem_head_scores.dim()[1] == 1:
             sem_head_score_values = np.reshape(sem_head_score_values,
                                                (sem_head_score_values.shape[0], sem_head_score_values.shape[1], 1))
-            sem_rel_argmax = np.reshape(sem_rel_argmax, (sem_rel_argmax.shape[0], sem_rel_argmax.shape[1], 1))
 
         assert sem_head_score_values.shape == mini_batch[6].shape
         sem_mask = mini_batch[-3]
@@ -625,5 +614,25 @@ class MSTParserLSTM:
             ]
         )
 
+        modifier_indices, head_indices = [], []
+        for i in range(sem_head_score_values.shape[0]):
+            for j in range(sem_head_score_values.shape[1]):
+                for k in range(sem_head_score_values.shape[2]):
+                    if sem_heads[i][j][k] == 1:
+                        modifier_idx = k * sem_head_score_values.shape[0] + i
+                        head_idx = k * sem_head_score_values.shape[0] + j
+                        modifier_indices.append(modifier_idx)
+                        head_indices.append(head_idx)
+        sem_rel_scores = self.sem_bilinear(HL, ML, sem_head_score_values.shape[0], [modifier_indices, head_indices])
+        sem_rel_argmax = np.zeros(sem_heads.shape, dtype=np.int32)
+        if sem_rel_scores is not None:
+            sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
+            c = 0
+            for i in range(sem_head_score_values.shape[0]):
+                for j in range(sem_head_score_values.shape[1]):
+                    for k in range(sem_head_score_values.shape[2]):
+                        if sem_heads[i][j][k] == 1:
+                            sem_rel_argmax[i][j][k] = sem_rels[c]
+                            c += 1
         renew_cg()
         return syntax_outputs, sem_heads, sem_rel_argmax

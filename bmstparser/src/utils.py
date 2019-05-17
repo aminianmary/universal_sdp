@@ -264,37 +264,17 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
         ]
     )
 
-    sem_rels = np.array(
-        [np.array(
-            [
-                np.array(
-                    [
-                        model.sem_rels.get(batch[i][j].sem_deps[k], 0) if 0 < j < len(batch[i]) and k in batch[i][
-                            j].sem_deps else 0 for i in range(len(batch))
-                    ]
-                )
-                for k in range(cur_len)
-            ]
-        )
-            for j in range(cur_len)
-        ]
-    )
-
-    sem_rel_masks = np.array(
-        [np.array(
-            [
-                np.array(
-                    [
-                        1 if 0 < j < len(batch[i]) and (k in batch[i][j].sem_deps or not is_train) else 0 for i in
-                        range(len(batch))
-                    ]
-                )
-                for k in range(cur_len)
-            ]
-        )
-            for j in range(cur_len)
-        ]
-    )
+    sem_rels, sem_rel_head_idx_to_use,sem_rel_mod_idx_to_use = [],[],[]
+    if is_train:
+        for j in range(cur_len):
+            for k in range(cur_len):
+                for i in range(len(batch)):
+                    if 0 < j < len(batch[i]) and k in batch[i][j].sem_deps:
+                        sem_rels.append(model.sem_rels.get(batch[i][j].sem_deps[k], 0))
+                        head_index = i * cur_len + k
+                        mod_index = i * cur_len + j
+                        sem_rel_head_idx_to_use.append(head_index)
+                        sem_rel_mod_idx_to_use.append(mod_index)
 
     chars = [list() for _ in range(cur_c_len)]
     for c_pos in range(cur_c_len):
@@ -312,7 +292,7 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
         j in
         range(cur_len)])
     mini_batches.append((words, lemmas , pwords, pos, dep_heads, dep_relations, sem_heads, sem_rels, chars, sem_head_masks,
-                         sem_rel_masks, dep_masks))
+                         [sem_rel_head_idx_to_use, sem_rel_mod_idx_to_use], dep_masks))
 
 def is_punc(pos):
     return pos == '.' or pos == 'PUNC' or pos == 'PUNCT' or \

@@ -421,23 +421,26 @@ class MSTParserLSTM:
         rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-2])
         return head_scores, rel_scores, HL, ML
 
-    def sem_bilinear(self, HL, ML, shape_0, rel_h_m_indices):
+    def sem_bilinear(self, HL, ML, seq_len, rel_h_m_indices):
         """
         Similar to bilinear, but for sparse computation (memory efficient) of semantic roles.
         """
         head_indices, modifier_indices = rel_h_m_indices
         if len(head_indices) == 0:
             return None
-        HL_w_b = concatenate([HL, inputTensor(np.ones((1, shape_0), dtype=np.float32))])
-        ML_w_b = concatenate([ML, inputTensor(np.ones((1, shape_0), dtype=np.float32))])
+        HL_w_b = concatenate([HL, inputTensor(np.ones((1, seq_len), dtype=np.float32))])
+        ML_w_b = concatenate([ML, inputTensor(np.ones((1, seq_len), dtype=np.float32))])
         HL_reshape = transpose(reshape(HL_w_b, (HL_w_b.dim()[0][0], HL_w_b.dim()[0][1] * HL_w_b.dim()[1])))
         ML_reshape = transpose(reshape(ML_w_b, (ML_w_b.dim()[0][0], ML_w_b.dim()[0][1] * ML_w_b.dim()[1])))
-        HL_to_use = [HL_reshape[hi] for hi in head_indices]
-        ML_to_use = [ML_reshape[mi] for mi in modifier_indices]
-        rel_scores = concatenate_to_batch(
-            [reshape(self.sem_u_label.expr() * m, (len(self.isem_rels), m.dim()[0][0])) * h for m, h in
-             zip(ML_to_use, HL_to_use)])
-        return rel_scores
+        HL_to_use = concatenate_to_batch([HL_reshape[hi] for hi in head_indices])
+        ML_to_use = concatenate_to_batch([ML_reshape[mi] for mi in modifier_indices])
+        num_outputs = len(self.isem_rels)
+
+        lin = self.sem_u_label.expr() * ML_to_use
+        lin = reshape(lin, (HL_w_b.dim()[0][0], num_outputs), batch_size=len(modifier_indices))
+        blin = transpose(HL_to_use) * lin
+        bilin_scores = reshape(blin, (num_outputs,), batch_size=len(modifier_indices))
+        return bilin_scores
 
     def get_scores(self, H, M, HL, ML, mini_batch, mtl_task):
         if mtl_task == 'sem':
@@ -623,10 +626,13 @@ class MSTParserLSTM:
                         head_idx = k * sem_head_score_values.shape[0] + j
                         modifier_indices.append(modifier_idx)
                         head_indices.append(head_idx)
-        sem_rel_scores = self.sem_bilinear(HL, ML, sem_head_score_values.shape[0], [modifier_indices, head_indices])
+        sem_rel_scores = self.sem_bilinear(HL, ML, sem_head_score_values.shape[0], [head_indices, modifier_indices])
         sem_rel_argmax = np.zeros(sem_heads.shape, dtype=np.int32)
         if sem_rel_scores is not None:
             sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
+            print 'sem_rels shape: '+ str(sem_rels.shape)
+            print 'sem_rel_argmax shape: '+ str(sem_rel_argmax.shape)
+            print 'sem_rel_scores shape: '+ str(sem_rel_scores.dime())
             c = 0
             for i in range(sem_head_score_values.shape[0]):
                 for j in range(sem_head_score_values.shape[1]):

@@ -266,13 +266,13 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
 
     sem_rels, sem_rel_head_idx_to_use,sem_rel_mod_idx_to_use = [],[],[]
     if is_train:
-        for j in range(cur_len):
-            for k in range(cur_len):
-                for i in range(len(batch)):
-                    if 0 < j < len(batch[i]) and k in batch[i][j].sem_deps:
-                        sem_rels.append(model.sem_rels.get(batch[i][j].sem_deps[k], 0))
-                        head_index = i * cur_len + k
-                        mod_index = i * cur_len + j
+        for dep in range(cur_len):
+            for head in range(cur_len):
+                for b in range(len(batch)):
+                    if 0 < dep < len(batch[b]) and head in batch[b][dep].sem_deps:
+                        sem_rels.append(model.sem_rels.get(batch[b][dep].sem_deps[head], 0))
+                        head_index = b * cur_len + head
+                        mod_index = b * cur_len + dep
                         sem_rel_head_idx_to_use.append(head_index)
                         sem_rel_mod_idx_to_use.append(mod_index)
 

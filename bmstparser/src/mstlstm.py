@@ -6,7 +6,6 @@ import numpy as np
 import codecs
 from linalg import *
 
-
 class MSTParserLSTM:
     def __init__(self, pos, dep_rels, sem_rels, w2i, l2i, chars, options):
         self.model = Model()
@@ -15,8 +14,8 @@ class MSTParserLSTM:
         self.trainer = AdamTrainer(self.model, options.lr, options.beta1, options.beta2)
         self.activations = {'tanh': tanh, 'sigmoid': logistic, 'relu': rectify, 'leaky': (lambda x: bmax(.1 * x, x))}
         self.activation = self.activations[options.activation]
-        self.vocab = {word: ind + 2 for word, ind in w2i.iteritems()}
-        self.lemma_vocab = {lemma: ind + 2 for lemma, ind in l2i.iteritems()}
+        self.vocab = {word: ind + 2 for word, ind in w2i.items()}
+        self.lemma_vocab = {lemma: ind + 2 for lemma, ind in l2i.items()}
         self.pos = {word: ind + 2 for ind, word in enumerate(pos)}
         self.dep_rels = {dep_rel: ind + 1 for ind, dep_rel in enumerate(dep_rels)}
         self.sem_rels = {sem_rel: ind + 1 for ind, sem_rel in enumerate(sem_rels)}
@@ -37,13 +36,24 @@ class MSTParserLSTM:
         self.lemlookup = self.model.add_lookup_parameters((len(l2i) + 2, edim))
         self.elookup = None
         if options.external_embedding is not None:
-            external_embedding_fp = gzip.open(options.external_embedding, 'r')
-            external_embedding = {line.split(' ')[0]: [float(f) for f in line.strip().split(' ')[1:]] for line in
-                                  external_embedding_fp if len(line.split(' ')) > 2}
+            external_embedding_fp = gzip.open(options.external_embedding, 'rt', errors='ignore')
+            external_embedding = {}
+            for line in external_embedding_fp:
+                if len(line.split(' ')) > 2:
+                    v = []
+                    w = line.split(' ')[0]
+                    for f in line.strip().split(' ')[1:]:
+                        v.append(float(f))
+                    if len(v) > 1:
+                        external_embedding[w] = v
+                        edim = len(v)
+            print('external embedding size: ', str(len(external_embedding)) )
+            #external_embedding = {line.split(' ')[0]: [float(f) for f in line.strip().split(' ')[1:]] for line in
+            #                      external_embedding_fp if len(line.split(' ')) > 2}
             external_embedding_fp.close()
             self.evocab = {word: i + 2 for i, word in enumerate(external_embedding)}
 
-            edim = len(external_embedding.values()[0])
+            #edim = len(external_embedding.values()[0])
             assert edim == options.extr_dim
             self.elookup = self.model.add_lookup_parameters((len(external_embedding) + 2, edim))
             self.elookup.set_updated(False)
@@ -150,7 +160,7 @@ class MSTParserLSTM:
         # dropout mask for word, external embeddings and Character is different from that of POS
         def _dropout_mask_generator(seq_len, batch_size):
             ret = []
-            for _ in xrange(seq_len):
+            for _ in range(seq_len):
                 word_mask = np.random.binomial(1, 1. - self.options.input_emb_dropout, batch_size).astype(np.float32)
                 if self.options.use_pos:
                     tag_mask = np.random.binomial(1, 1. - self.options.input_emb_dropout, batch_size).astype(np.float32)

@@ -2,8 +2,8 @@ from collections import Counter
 import re, codecs, sys, random
 import numpy as np
 
-reload(sys)
-sys.setdefaultencoding('utf8')
+#reload(sys)
+#sys.setdefaultencoding('utf8')
 
 
 class ConllEntry:

@@ -53,8 +53,8 @@ class MSTParserLSTM:
                 if word == '_UNK_':
                     self.elookup.init_row(0, external_embedding[word])
 
-            print 'Initialized with pre-trained embedding. Vector dimensions', edim, 'and', len(external_embedding), \
-                'words, number of training words', len(w2i) + 2
+            print( 'Initialized with pre-trained embedding. Vector dimensions', edim, 'and', len(external_embedding), \
+                'words, number of training words', len(w2i) + 2)
         self.plookup = self.model.add_lookup_parameters((len(pos) + 2, options.pe))
 
         # recurrent layer (SHARED BiLSTM in case of having task-specific recurrent layer)
@@ -406,9 +406,9 @@ class MSTParserLSTM:
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):
-            print 'loss value:', loss
-            print 'head_loss, rel_loss', head_loss.value(), rel_loss.value()
-            print 'n_head_tokens, n_rel_tokens', n_head_tokens, n_rel_tokens
+            print( 'loss value:', loss)
+            print( 'head_loss, rel_loss', head_loss.value(), rel_loss.value())
+            print( 'n_head_tokens, n_rel_tokens', n_head_tokens, n_rel_tokens)
         err.backward()
         self.trainer.update()
         renew_cg()
@@ -546,7 +546,7 @@ class MSTParserLSTM:
         err.scalar_value()
         loss = err.value()
         if math.isnan(loss):
-            print 'loss value:', loss
+            print( 'loss value:', loss)
         err.backward()
         self.trainer.update()
         renew_cg()
@@ -630,9 +630,9 @@ class MSTParserLSTM:
         sem_rel_argmax = np.zeros(sem_heads.shape, dtype=np.int32)
         if sem_rel_scores is not None:
             sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
-            print 'sem_rels shape: '+ str(sem_rels.shape)
-            print 'sem_rel_argmax shape: '+ str(sem_rel_argmax.shape)
-            print 'sem_rel_scores shape: '+ str(sem_rel_scores.dime())
+            print( 'sem_rels shape: '+ str(sem_rels.shape))
+            print( 'sem_rel_argmax shape: '+ str(sem_rel_argmax.shape))
+            print( 'sem_rel_scores shape: '+ str(sem_rel_scores.dime()))
             c = 0
             for i in range(sem_head_score_values.shape[0]):
                 for j in range(sem_head_score_values.shape[1]):

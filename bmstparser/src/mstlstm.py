@@ -501,9 +501,8 @@ class MSTParserLSTM:
         flat_head_scores_to_use = pick_batch(reshape(flat_head_scores, (heads.shape[0],)), indices_to_use_for_head)
         heads_tensor_to_use = pick_batch(reshape(heads_tensor, (heads.shape[0],)), indices_to_use_for_head)
         flat_head_probs = logistic(flat_head_scores_to_use) + 1e-12
-        #head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
-        head_losses = -(heads_tensor_to_use * log(flat_head_probs) + (1-heads_tensor_to_use) * log(1-flat_head_probs))
-        head_loss = cdiv(sum_batches(head_losses), scalarInput(n_head_tokens))
+        head_losses = binary_log_loss(flat_head_probs, heads_tensor_to_use)
+        head_loss = sum_batches(head_losses) / n_head_tokens
 
         gold_rels = mini_batch[7]
         if len(gold_rels) > 0:
@@ -527,9 +526,9 @@ class MSTParserLSTM:
         partial_rel_scores = pick_batch(flat_rel_scores, heads)
         gold_relations = np.reshape(mini_batch[5], (-1,), 'F')
         arc_losses = pickneglogsoftmax_batch(flat_scores, heads)
-        arc_loss = cdiv(sum_batches(arc_losses * mask_1D_tensor), scalarInput(n_tokens))
+        arc_loss = sum_batches(arc_losses * mask_1D_tensor) / n_tokens
         rel_losses = pickneglogsoftmax_batch(partial_rel_scores, gold_relations)
-        rel_loss = cdiv(sum_batches(rel_losses * mask_1D_tensor), scalarInput(n_tokens))
+        rel_loss = sum_batches(rel_losses * mask_1D_tensor) / n_tokens
         return arc_loss, rel_loss
 
     def build_mtl_graph(self, mini_batch, sharing_mode, t=1):
@@ -643,7 +642,7 @@ class MSTParserLSTM:
             sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
             print( 'sem_rels shape: '+ str(sem_rels.shape))
             print( 'sem_rel_argmax shape: '+ str(sem_rel_argmax.shape))
-            print( 'sem_rel_scores shape: '+ str(sem_rel_scores.dim()))
+            print( 'sem_rel_scores shape: '+ str(sem_rel_scores.dime()))
             c = 0
             for i in range(sem_head_score_values.shape[0]):
                 for j in range(sem_head_score_values.shape[1]):

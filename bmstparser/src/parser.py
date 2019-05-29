@@ -1,6 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, sys, os.path, time
-import functools
+
 
 def parse(parser, buckets, test_file, output_file):
     syntax_results = list()
@@ -13,8 +13,8 @@ def parse(parser, buckets, test_file, output_file):
         sem_head_results.append(sem_heads)
         sem_rel_results.append(sem_rel_argmax)
 
-    arcs = functools.reduce(lambda x, y: x + y, [list(result[0]) for result in syntax_results])
-    dep_rels = functools.reduce(lambda x, y: x + y, [list(result[1]) for result in syntax_results])
+    arcs = reduce(lambda x, y: x + y, [list(result[0]) for result in syntax_results])
+    dep_rels = reduce(lambda x, y: x + y, [list(result[1]) for result in syntax_results])
     idx = 0
     cur_sem_head_results = sem_head_results.pop(0)
     cur_sem_rel_results = sem_rel_results.pop(0)

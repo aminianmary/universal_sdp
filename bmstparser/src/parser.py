@@ -103,35 +103,35 @@ if __name__ == '__main__':
     parser.add_option("--label_dropout", type="float", dest="label_dropout", default=0.33)
 
     (options, args) = parser.parse_args()
-    print( 'options', options)
-    print( 'Using external embedding:', options.external_embedding)
+    print 'options', options
+    print 'Using external embedding:', options.external_embedding
     if options.predictFlag:
         with open(options.params, 'r') as paramsfp:
             w2i, l2i, pos, dep_rels, sem_rels, chars, stored_opt = pickle.load(paramsfp)
         stored_opt.external_embedding = options.external_embedding
-        print( 'stored options:', stored_opt)
-        print( 'Initializing lstm mstparser:')
+        print 'stored options:', stored_opt
+        print 'Initializing lstm mstparser:'
         parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, l2i, chars, stored_opt)
         parser.Load(options.model)
         ts = time.time()
-        print( 'loading buckets')
+        print 'loading buckets'
         test_buckets = [list()]
         test_data = list(utils.read_conll(open(options.conll_test, 'r')))
         for d in test_data:
             test_buckets[0].append(d)
-        print( 'parsing')
+        print 'parsing'
         parse(parser, test_buckets, options.conll_test, options.conll_output)
         te = time.time()
-        print( 'Finished predicting test.', te - ts, 'seconds.')
+        print 'Finished predicting test.', te - ts, 'seconds.'
     else:
-        print( 'Preparing vocab')
+        print 'Preparing vocab'
         w2i, l2i, pos, dep_rels, sem_rels, chars = utils.vocab(options.conll_train, options.min_count)
         if not os.path.isdir(options.output): os.mkdir(options.output)
         with open(os.path.join(options.output, options.params), 'w') as paramsfp:
             pickle.dump((w2i, l2i, pos, dep_rels, sem_rels, chars, options), paramsfp)
-        print( 'Finished collecting vocab')
+        print 'Finished collecting vocab'
 
-        print( 'Initializing lstm mstparser:')
+        print 'Initializing lstm mstparser:'
         parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, l2i, chars, options)
         best_acc = -float('inf')
         t, epoch = 0, 1
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         best_lf = 0
         no_improvement = 0
         while t <= options.t and epoch <= options.epoch:
-            print( 'Starting epoch', epoch, 'time:', time.ctime())
+            print 'Starting epoch', epoch, 'time:', time.ctime()
             mini_batches = utils.get_batches(buckets, parser, True)
             start, closs = time.time(), 0
             for i, minibatch in enumerate(mini_batches):
@@ -162,7 +162,7 @@ if __name__ == '__main__':
                 elif options.task == "multi":
                     t, loss = parser.build_mtl_graph(minibatch, options.sharing_mode, t)
                 else:
-                    print( 'unknown task option')
+                    print 'unknown task option'
                     sys.exit(1)
                 if parser.options.anneal:
                     decay_steps = min(1.0, float(t) / 50000)
@@ -178,30 +178,30 @@ if __name__ == '__main__':
                         uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out')
 
                         if options.task == 'syntax':
-                            print( 'current syntax accuracy', best_las, uas)
+                            print 'current syntax accuracy', best_las, uas
                             if las > best_las:
                                 best_las = las
-                                print( 'saving with', best_las, uas)
+                                print 'saving with', best_las, uas
                                 parser.Save(options.output + '/model')
                                 no_improvement = 0
                             else:
                                 no_improvement += 1
                         elif options.task == 'sem':
-                            print( 'current semantic LF', best_lf, uf)
+                            print 'current semantic LF', best_lf, uf
                             if lf > best_lf:
                                 best_lf = lf
-                                print( 'saving with', best_lf, lf)
+                                print 'saving with', best_lf, lf
                                 parser.Save(options.output + '/model')
                                 no_improvement = 0
                             else:
                                 no_improvement += 1
                         elif options.task == 'multi':
-                            print( 'current syntax accuracy', best_las, uas)
-                            print( 'current semantic LF', best_lf, lf)
+                            print 'current syntax accuracy', best_las, uas
+                            print 'current semantic LF', best_lf, lf
                             if lf * las > best_lf * best_las:
                                 best_lf = lf
                                 best_las = las
-                                print( 'saving with', best_lf, lf, best_las, las)
+                                print 'saving with', best_lf, lf, best_las, las
                                 parser.Save(options.output + '/model')
                                 no_improvement = 0
                             else:
@@ -210,11 +210,11 @@ if __name__ == '__main__':
                     start, closs = time.time(), 0
 
                 if no_improvement > options.stop:
-                    print( 'No improvements after', no_improvement, 'steps -> terminating.')
+                    print 'No improvements after', no_improvement, 'steps -> terminating.'
                     sys.exit(0)
-            print( 'current learning rate', parser.trainer.learning_rate, 't:', t)
+            print 'current learning rate', parser.trainer.learning_rate, 't:', t
             epoch += 1
 
         if not options.conll_dev:
-            print( 'Saving default model without dev-tuning')
+            print 'Saving default model without dev-tuning'
             parser.Save(options.output + '/model')

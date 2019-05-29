@@ -169,7 +169,7 @@ def get_sem_deps(sd):
             if len(spl) == 2:
                 sd_dic[int(spl[0])] = spl[1]
             else:
-                print(spl)
+                print spl
     return sd_dic
 
 

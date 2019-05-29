@@ -1,7 +1,6 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, sys, os.path, time
 
-
 def parse(parser, buckets, test_file, output_file):
     syntax_results = list()
     sem_head_results = list()
@@ -128,7 +127,7 @@ if __name__ == '__main__':
         print( 'Preparing vocab')
         w2i, l2i, pos, dep_rels, sem_rels, chars = utils.vocab(options.conll_train, options.min_count)
         if not os.path.isdir(options.output): os.mkdir(options.output)
-        with open(os.path.join(options.output, options.params), 'wb') as paramsfp:
+        with open(os.path.join(options.output, options.params), 'w') as paramsfp:
             pickle.dump((w2i, l2i, pos, dep_rels, sem_rels, chars, options), paramsfp)
         print( 'Finished collecting vocab')
 

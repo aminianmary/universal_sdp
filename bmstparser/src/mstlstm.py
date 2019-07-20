@@ -629,10 +629,16 @@ class MSTParserLSTM:
         sem_rel_scores = self.sem_bilinear(HL, ML, sem_head_score_values.shape[0], [head_indices, modifier_indices])
         sem_rel_argmax = np.zeros(sem_heads.shape, dtype=np.int32)
         if sem_rel_scores is not None:
-            sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
+            sem_rel_scores_reshape = reshape(sem_rel_scores, (sem_rel_scores.dim()[0][0], sem_rel_scores.dim()[1]))
+            sem_rels = np.argmax(sem_rel_scores_reshape.npvalue(), axis=0)
+            # if sem_rel_scores.dim()[1] == 1:
+            #     sem_rels =  np.argmax(pick_batch_elem(sem_rel_scores, 0).npvalue())
+            # else:
+            #     sem_rels = np.argmax(sem_rel_scores.npvalue(), axis=0)
             print 'sem_rels shape: '+ str(sem_rels.shape)
             print 'sem_rel_argmax shape: '+ str(sem_rel_argmax.shape)
-            print 'sem_rel_scores shape: '+ str(sem_rel_scores.dime())
+            print 'sem_rel_scores shape: '+ str(sem_rel_scores.dim())
+            print 'sem_rel_scores_reshape shape: '+ str(sem_rel_scores_reshape.dim())
             c = 0
             for i in range(sem_head_score_values.shape[0]):
                 for j in range(sem_head_score_values.shape[1]):

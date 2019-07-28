@@ -88,6 +88,7 @@ if __name__ == '__main__':
     parser.add_option("--no_syn_head_loss_bp", action="store_false", dest="syn_head_loss_bp", default=True)
     parser.add_option("--task_specific_recurrent_layer", action="store_true", dest="task_specific_recurrent_layer", default=False)
     parser.add_option("--add_bert", action="store_true", dest="add_bert_features", default=False)
+    parser.add_option("--add_bert_to_input", action="store_true", dest="add_bert_features_to_input", default=False)
     parser.add_option("--stop", type="int", dest="stop", default=10000)
     parser.add_option("--dynet-mem", type="int", dest="mem", default=0)
     parser.add_option("--dynet-autobatch", type="int", dest="dynet-autobatch", default=0)

@@ -57,7 +57,7 @@ class MSTParserLSTM:
             print 'Initialized with pre-trained embedding. Vector dimensions', edim, 'and', len(external_embedding), \
                 'words, number of training words', len(w2i) + 2
 
-        if options.add_bert_features:
+        if options.add_bert_features or options.add_bert_features_to_input:
             # contains train bert features or test bert features depending on the mood
             self.bert_embedding = utils.bert_features(options.bert_embedding)
             self.bert_dim = len(self.bert_embedding[0][1])
@@ -67,7 +67,12 @@ class MSTParserLSTM:
         self.plookup = self.model.add_lookup_parameters((len(pos) + 2, options.pe))
 
         # recurrent layer (SHARED BiLSTM in case of having task-specific recurrent layer)
-        input_dim = edim + options.pe if self.options.use_pos else edim
+        input_dim = edim
+        if self.options.use_pos:
+            input_dim += options.pe
+        if self.options.add_bert_features_to_input:
+            input_dim += self.bert_dim
+
         self.deep_lstms = BiRNNBuilder(options.layer, input_dim, options.rnn * 2, self.model, VanillaLSTMBuilder)
         for i in range(len(self.deep_lstms.builder_layers)):
             builder = self.deep_lstms.builder_layers[i]
@@ -322,8 +327,8 @@ class MSTParserLSTM:
 
         return (char_fwd, char_bckd)
 
-    def recurrent_layer(self, sens, train):
-        words, lemmas, pwords, pos, chars = sens[0], sens[1], sens[2], sens[3], sens[8]
+    def recurrent_layer(self, minibatch, train):
+        words, lemmas, pwords, pos, chars = minibatch[0], minibatch[1], minibatch[2], minibatch[3], minibatch[8]
         if self.options.use_char:
             cembed = [lookup_batch(self.clookup, c) for c in chars]
             char_fwd, char_bckd = self.char_lstm_output(cembed, train, words.shape[0])
@@ -351,13 +356,35 @@ class MSTParserLSTM:
 
         posembed = [lookup_batch(self.plookup, pos[i]) for i in range(len(pos))] if self.options.use_pos else None
 
+        if self.options.add_bert_features_to_input:
+            minibatch_bert_features = self.get_minibatch_bert_features(minibatch, is_dev=False)
+            bf = [[] for _ in range(minibatch_bert_features[0].shape[0])]
+            for b in range(len(minibatch_bert_features)):
+                for w in range(len(minibatch_bert_features[b])):
+                    bf[w].append(minibatch_bert_features[b][w])
+
+            bf_ = []
+            for i in range(len(bf)):
+                f = inputTensor(np.transpose(np.array(bf[i])))
+                bf_.append(reshape(f,(f.dim()[0][0],),f.dim()[0][1]))
+
         if not train:
-            inputs = [concatenate([w, pos]) for w, pos in zip(wembed, posembed)] if self.options.use_pos else wembed
+            if self.options.add_bert_features_to_input:
+                inputs = [concatenate([w, pos, bert]) for w, pos, bert in zip(wembed, posembed, bf_)] \
+                    if self.options.use_pos else [concatenate([w, bert]) for w, bert in zip(wembed, bf_)]
+            else:
+                inputs = [concatenate([w, pos]) for w, pos in zip(wembed, posembed)] if self.options.use_pos else wembed
         else:
             emb_dropout_masks = self.generate_emb_dropout_mask(words.shape[0], words.shape[1])
-            inputs = [concatenate([cmult(w, wm), cmult(pos, posm)]) for w, pos, (wm, posm) in
-                      zip(wembed, posembed, emb_dropout_masks)] if self.options.use_pos \
-                else [cmult(w, wm) for w, wm in zip(wembed, emb_dropout_masks)]
+            if self.options.add_bert_features_to_input:
+                inputs = [concatenate([cmult(w, wm), cmult(pos, posm), bert]) for w, pos, bert, (wm, posm) in
+                          zip(wembed, posembed, bf_, emb_dropout_masks)] if self.options.use_pos \
+                    else [concatenate([cmult(w, wm), bert]) for w, bert, wm in zip(wembed, bf_, emb_dropout_masks)]
+            else:
+                inputs = [concatenate([cmult(w, wm), cmult(pos, posm)]) for w, pos, (wm, posm) in
+                          zip(wembed, posembed, emb_dropout_masks)] if self.options.use_pos \
+                    else [cmult(w, wm) for w, wm in zip(wembed, emb_dropout_masks)]
+
 
         bilstm_recur_dropout = self.options.bilstm_recur_dropout
         bilstm_ff_dropout = self.options.bilstm_ff_dropout

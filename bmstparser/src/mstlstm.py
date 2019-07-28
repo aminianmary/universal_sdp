@@ -47,7 +47,8 @@ class MSTParserLSTM:
             assert edim == options.extr_dim
             self.elookup = self.model.add_lookup_parameters((len(external_embedding) + 2, edim))
             self.elookup.set_updated(False)
-            self.elookup.init_row(0, [0] * edim)
+            self.elookup.init_row(0, [0] * edim) #unknown words
+            self.elookup.init_row(1, [0] * edim) #PAD words
             for word in external_embedding.keys():
                 self.elookup.init_row(self.evocab[word], external_embedding[word])
                 if word == '_UNK_':
@@ -55,6 +56,14 @@ class MSTParserLSTM:
 
             print 'Initialized with pre-trained embedding. Vector dimensions', edim, 'and', len(external_embedding), \
                 'words, number of training words', len(w2i) + 2
+
+        if options.add_bert_features:
+            # contains train bert features or test bert features depending on the mood
+            self.bert_embedding = utils.bert_features(options.bert_embedding)
+            self.bert_dim = len(self.bert_embedding[0][1])
+            if options.conll_dev:
+                self.dev_bert_embedding = utils.bert_features(options.dev_bert_embedding)
+
         self.plookup = self.model.add_lookup_parameters((len(pos) + 2, options.pe))
 
         # recurrent layer (SHARED BiLSTM in case of having task-specific recurrent layer)
@@ -77,8 +86,10 @@ class MSTParserLSTM:
 
         # initializer for the syntax and semantic higher layers.
         fnn_dim = options.rnn * 2
+        if self.options.add_bert_features:
+            fnn_dim += self.bert_dim
         if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
-            fnn_dim = options.rnn * 4
+            fnn_dim += options.rnn * 2
 
         w_mlp_arc = orthonormal_initializer(options.arc_mlp, fnn_dim)
         w_mlp_label = orthonormal_initializer(options.label_mlp, fnn_dim)
@@ -399,7 +410,15 @@ class MSTParserLSTM:
 
     def build_semantic_graph(self, mini_batch, t=1):
         h, _ = self.recurrent_layer(mini_batch, train=True)
-        head_scores, rel_scores, _, _ = self.get_sem_scores(h, mini_batch, train=True)
+        fnn_input = h
+        if self.options.add_bert_features:
+            minibatch_bert_features = self.get_minibatch_bert_features(mini_batch, is_dev=False)
+            mb = inputTensor(np.transpose(np.array(minibatch_bert_features)))
+            mb_ = reshape(mb, (mb.dim()[0][0],mb.dim()[0][1]),mb.dim()[0][2])
+            h_bert = concatenate([fnn_input, mb_])
+            fnn_input = h_bert
+
+        head_scores, rel_scores, _, _ = self.get_sem_scores(fnn_input, mini_batch, train=True)
         head_loss, rel_loss = self.sem_loss(mini_batch, head_scores, rel_scores)
         coef = self.options.interpolation_coef
         err = coef * rel_loss + (1 - coef) * head_loss
@@ -414,11 +433,35 @@ class MSTParserLSTM:
         renew_cg()
         return t + 1, loss
 
+    def get_minibatch_bert_features (self, mini_batch, is_dev):
+        #concatenating bert features to BiLSTM hidden output
+        mini_batch_sen_ids = mini_batch[-2]
+        words = mini_batch[0]
+        sen_bert_features = []
+        batch_bert_features = []
+        no_bert = [0] * self.bert_dim
+        for i in range(words.shape[1]):
+            s_id = mini_batch_sen_ids[i]
+            sen_bert_features = []
+            for j in range(words.shape[0]):
+                if j == 0:
+                    sen_bert_features.append(no_bert)
+                elif words[j][i] == 0 or words[j][i] == self.PAD:
+                    sen_bert_features.append(no_bert)
+                else:
+                    if is_dev:
+                        sen_bert_features.append(self.dev_bert_embedding[s_id][j])
+                    else:
+                        sen_bert_features.append(self.bert_embedding[s_id][j])
+            batch_bert_features.append(np.array(sen_bert_features))
+
+        return batch_bert_features
+
     def get_sem_scores(self, h, mini_batch, train):
         H, M, HL, ML = self.fnn_sem(h, train)
         head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                     mini_batch[0].shape[1], 1, True, False)
-        rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-2])
+        rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-3])
         return head_scores, rel_scores, HL, ML
 
     def sem_bilinear(self, HL, ML, seq_len, rel_h_m_indices):
@@ -446,7 +489,7 @@ class MSTParserLSTM:
         if mtl_task == 'sem':
             head_scores = self.bilinear(M, self.sem_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                         mini_batch[0].shape[1], 1, True, False)
-            rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-2])
+            rel_scores = self.sem_bilinear(HL, ML, mini_batch[0].shape[0], mini_batch[-3])
         elif mtl_task == 'syntax':
             head_scores = self.bilinear(M, self.syn_w_arc.expr(), H, self.options.arc_mlp, mini_batch[0].shape[0],
                                         mini_batch[0].shape[1], 1, True, False)
@@ -481,7 +524,7 @@ class MSTParserLSTM:
     def sem_loss(self, mini_batch, sem_head_scores, sem_rel_scores):
         heads = np.reshape(mini_batch[6], (-1,), 'F')
         heads_tensor = inputTensor(heads, batched=True)
-        head_masks = np.reshape(mini_batch[-3], (-1,), 'F')
+        head_masks = np.reshape(mini_batch[-4], (-1,), 'F')
         indices_to_use_for_head = [i[0] for (i, mask) in np.ndenumerate(head_masks) if mask == 1]
         if len(indices_to_use_for_head) == 0:
             return
@@ -523,12 +566,17 @@ class MSTParserLSTM:
 
     def build_mtl_graph(self, mini_batch, sharing_mode, t=1):
         shared_h, sem_h = self.recurrent_layer(mini_batch, train=True)
+        fnn_input = shared_h
         if self.options.task_specific_recurrent_layer:
-            h = concatenate([shared_h, sem_h])
-        else:
-            h = shared_h
+            fnn_input = concatenate([shared_h, sem_h])
+        if self.options.add_bert_features:
+            minibatch_bert_features = self.get_minibatch_bert_features(mini_batch, is_dev=False)
+            mb = inputTensor(np.transpose(np.array(minibatch_bert_features)))
+            mb_ = reshape(mb, (mb.dim()[0][0],mb.dim()[0][1]),mb.dim()[0][2])
+            h_bert = concatenate([fnn_input, mb_])
+            fnn_input = h_bert
 
-        sem_hs, sem_rs, syn_hs, syn_rs, _, _ = self.get_mtl_scores(h, mini_batch, sharing_mode, train=True)
+        sem_hs, sem_rs, syn_hs, syn_rs, _, _ = self.get_mtl_scores(fnn_input, mini_batch, sharing_mode, train=True)
         sem_loss = self.sem_loss(mini_batch, sem_hs, sem_rs)
         sem_head_loss, sem_rel_loss = (sem_loss[0], sem_loss[1]) if sem_loss is not None else (None, None)
         syn_loss = self.syn_loss(mini_batch, syn_hs, syn_rs)
@@ -552,28 +600,33 @@ class MSTParserLSTM:
         renew_cg()
         return t + 1, loss
 
-    def decode(self, mini_batch):
+    def decode(self, mini_batch, is_dev):
         shared_h, sem_h = self.recurrent_layer(mini_batch, train=False)
-        if self.options.task == 'multi' and self.options.task_specific_recurrent_layer:
-            h = concatenate([shared_h, sem_h])
-        else:
-            h = shared_h
+
+        fnn_input = shared_h
+        if self.options.task_specific_recurrent_layer:
+            fnn_input = concatenate([shared_h, sem_h])
+        if self.options.add_bert_features:
+            minibatch_bert_features = self.get_minibatch_bert_features(mini_batch, is_dev)
+            mb = inputTensor(np.transpose(np.array(minibatch_bert_features)))
+            mb_ = reshape(mb, (mb.dim()[0][0], mb.dim()[0][1]), mb.dim()[0][2])
+            h_bert = concatenate([fnn_input, mb_])
+            fnn_input = h_bert
 
         if self.options.task == 'multi' and self.options.sharing_mode == "shared":
-            sem_head_scores, _, syn_head_scores, syn_rel_scores, HL, ML = self.get_mtl_scores(h, mini_batch,
-                                                                                              self.options.sharing_mode,
-                                                                                              train=False)
+            sem_head_scores, _, syn_head_scores, syn_rel_scores, HL, ML = \
+                self.get_mtl_scores(fnn_input, mini_batch,self.options.sharing_mode,train=False)
             flat_syn_head_scores = reshape(syn_head_scores, (mini_batch[0].shape[0],),
                                            mini_batch[0].shape[0] * mini_batch[0].shape[1])
             flat_syn_rel_scores = reshape(syn_rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
                                           mini_batch[0].shape[0] * mini_batch[0].shape[1])
         else:
-            syn_head_scores, syn_rel_scores = self.get_syntax_scores(h, mini_batch, train=False)
+            syn_head_scores, syn_rel_scores = self.get_syntax_scores(fnn_input, mini_batch, train=False)
             flat_syn_head_scores = reshape(syn_head_scores, (mini_batch[0].shape[0],),
                                            mini_batch[0].shape[0] * mini_batch[0].shape[1])
             flat_syn_rel_scores = reshape(syn_rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
                                           mini_batch[0].shape[0] * mini_batch[0].shape[1])
-            sem_head_scores, _, HL, ML = self.get_sem_scores(h, mini_batch, train=False)
+            sem_head_scores, _, HL, ML = self.get_sem_scores(fnn_input, mini_batch, train=False)
 
         # Syntax
         syntax_arc_probs = np.transpose(np.reshape(softmax(flat_syn_head_scores).npvalue(), (
@@ -600,7 +653,7 @@ class MSTParserLSTM:
                                                (sem_head_score_values.shape[0], sem_head_score_values.shape[1], 1))
 
         assert sem_head_score_values.shape == mini_batch[6].shape
-        sem_mask = mini_batch[-3]
+        sem_mask = mini_batch[-4]
         sem_heads = np.array(
             [np.array(
                 [

@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 import re, codecs, sys, random
 import numpy as np
 
@@ -198,8 +198,9 @@ def get_batches(buckets, model, is_train):
         for d in dc:
             if (is_train and len(d) <= 100) or not is_train:
                 batch.append(d)
-                cur_c_len = max(cur_c_len, max([len(w.norm) for w in d]))
-                cur_len = max(cur_len, len(d))
+                sen_id, conll_entries = d
+                cur_c_len = max(cur_c_len, max([len(w.norm) for w in conll_entries]))
+                cur_len = max(cur_len, len(conll_entries))
 
             if cur_len * len(batch) >= model.options.batch:
                 add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train)
@@ -215,23 +216,23 @@ def get_batches(buckets, model, is_train):
 
 def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
     words = np.array([np.array(
-        [model.vocab.get(batch[i][j].norm, 0) if j < len(batch[i]) else model.PAD for i in
+        [model.vocab.get(batch[i][1][j].norm, 0) if j < len(batch[i][1]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
     lemmas = np.array([np.array(
-        [model.lemma_vocab.get(batch[i][j].lemma, 0) if j < len(batch[i]) else model.PAD for i in
+        [model.lemma_vocab.get(batch[i][1][j].lemma, 0) if j < len(batch[i][1]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
     pwords = np.array([np.array(
-        [model.evocab.get(batch[i][j].norm, 0) if j < len(batch[i]) else model.PAD for i in
+        [model.evocab.get(batch[i][1][j].norm, 0) if j < len(batch[i][1]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
     pos = np.array([np.array(
-        [model.pos.get(batch[i][j].pos, 0) if j < len(batch[i]) else model.PAD for i in
+        [model.pos.get(batch[i][1][j].pos, 0) if j < len(batch[i][1]) else model.PAD for i in
          range(len(batch))]) for j in range(cur_len)])
     dep_heads = np.array(
         [np.array(
-            [batch[i][j].head if 0 < j < len(batch[i]) and batch[i][j].head >= 0 else 0 for i in range(len(batch))]) for
+            [batch[i][1][j].head if 0 < j < len(batch[i][1]) and batch[i][1][j].head >= 0 else 0 for i in range(len(batch))]) for
             j in range(cur_len)])
     dep_relations = np.array([np.array(
-        [model.dep_rels.get(batch[i][j].dep_relation, 0) if j < len(batch[i]) else model.PAD_REL for i in
+        [model.dep_rels.get(batch[i][1][j].dep_relation, 0) if j < len(batch[i][1]) else model.PAD_REL for i in
          range(len(batch))]) for j in range(cur_len)])
 
     sem_heads = np.array(
@@ -239,7 +240,7 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
             [
                 np.array(
                     [
-                        1 if 0 < d < len(batch[b]) and h in batch[b][d].sem_deps else 0 for b in range(len(batch))
+                        1 if 0 < d < len(batch[b][1]) and h in batch[b][1][d].sem_deps else 0 for b in range(len(batch))
                     ]
                 )
                 for h in range(cur_len)
@@ -254,7 +255,7 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
             [
                 np.array(
                     [
-                        1 if (0 < j < len(batch[i]) and (-1 not in batch[i][j].sem_deps or not is_train)) else 0 for i
+                        1 if (0 < j < len(batch[i][1]) and (-1 not in batch[i][1][j].sem_deps or not is_train)) else 0 for i
                         in range(len(batch))
                     ]
                 )
@@ -269,8 +270,8 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
         for dep in range(cur_len):
             for head in range(cur_len):
                 for b in range(len(batch)):
-                    if 0 < dep < len(batch[b]) and head in batch[b][dep].sem_deps:
-                        sem_rels.append(model.sem_rels.get(batch[b][dep].sem_deps[head], 0))
+                    if 0 < dep < len(batch[b][1]) and head in batch[b][1][dep].sem_deps:
+                        sem_rels.append(model.sem_rels.get(batch[b][1][dep].sem_deps[head], 0))
                         head_index = b * cur_len + head
                         mod_index = b * cur_len + dep
                         sem_rel_head_idx_to_use.append(head_index)
@@ -282,17 +283,19 @@ def add_to_minibatch(batch, cur_c_len, cur_len, mini_batches, model, is_train):
         offset = 0
         for w_pos in range(cur_len):
             for sen_position in range(len(batch)):
-                if w_pos < len(batch[sen_position]) and c_pos < len(batch[sen_position][w_pos].norm):
-                    ch[offset] = model.chars.get(batch[sen_position][w_pos].norm[c_pos], 0)
+                if w_pos < len(batch[sen_position][1]) and c_pos < len(batch[sen_position][1][w_pos].norm):
+                    ch[offset] = model.chars.get(batch[sen_position][1][w_pos].norm[c_pos], 0)
                 offset += 1
         chars[c_pos] = np.array(ch)
     chars = np.array(chars)
     dep_masks = np.array([np.array(
-        [1 if 0 < j < len(batch[i]) and (batch[i][j].head >= 0 or not is_train) else 0 for i in range(len(batch))]) for
-        j in
-        range(cur_len)])
+        [1 if 0 < j < len(batch[i][1]) and (batch[i][1][j].head >= 0 or not is_train) else 0 for i in range(len(batch))])
+        for j in range(cur_len)])
+
+    sen_ids = np.array([batch[i][0] for i in range(len(batch))])
+
     mini_batches.append((words, lemmas , pwords, pos, dep_heads, dep_relations, sem_heads, sem_rels, chars, sem_head_masks,
-                         [sem_rel_head_idx_to_use, sem_rel_mod_idx_to_use], dep_masks))
+                         [sem_rel_head_idx_to_use, sem_rel_mod_idx_to_use], sen_ids, dep_masks))
 
 def is_punc(pos):
     return pos == '.' or pos == 'PUNC' or pos == 'PUNCT' or \
@@ -301,3 +304,21 @@ def is_punc(pos):
            pos == "\"" or pos == "," or pos == "." or pos == ":" or \
            pos == "``" or pos == "-LRB-" or pos == "-RRB-" or pos == "-LSB-" or \
            pos == "-RSB-" or pos == "-LCB-" or pos == "-RCB-" or pos == '"' or pos == ')'
+
+def bert_features(bert_fp):
+    bert_features = {}
+    with open(bert_fp,'r') as reader:
+        s_id = 0
+        t_id = 0
+        sen_bert = {}
+        for line in reader:
+            if line.strip() == '':
+                bert_features[s_id] = sen_bert
+                sen_bert = {}
+                t_id = 0
+                s_id +=1
+            else:
+                t_id +=1
+                sen_bert[t_id]= [float(f) for f in line.strip().split(' ')[1].split('\t')]
+
+    return bert_features

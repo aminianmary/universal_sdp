@@ -1,12 +1,12 @@
 from optparse import OptionParser
 import pickle, utils, mstlstm, sys, os.path, time
 
-def parse(parser, buckets, test_file, output_file):
+def parse(parser, buckets, test_file, output_file, is_dev):
     syntax_results = list()
     sem_head_results = list()
     sem_rel_results = list()
     for mini_batch in utils.get_batches(buckets, parser, False):
-        syntax_outputs, sem_heads, sem_rel_argmax = parser.decode(mini_batch)
+        syntax_outputs, sem_heads, sem_rel_argmax = parser.decode(mini_batch, is_dev)
         for output in syntax_outputs:
             syntax_results.append(output)
         sem_head_results.append(sem_heads)
@@ -55,6 +55,8 @@ if __name__ == '__main__':
     parser.add_option("--test", dest="conll_test", help="Annotated CONLL test file", metavar="FILE", default=None)
     parser.add_option("--output", dest="conll_output", metavar="FILE", default=None)
     parser.add_option("--extrn", dest="external_embedding", help="External embeddings", metavar="FILE")
+    parser.add_option("--bert", dest="bert_embedding", help="BERT embeddings", metavar="FILE")
+    parser.add_option("--dev_bert", dest="dev_bert_embedding", help="dev BERT embeddings", metavar="FILE")
     parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
     parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE", default="parser.model")
     parser.add_option("--we", type="int", dest="we", default=100)
@@ -85,6 +87,7 @@ if __name__ == '__main__':
     parser.add_option("--no_lemma", action="store_false", dest="use_lemma", default=True)
     parser.add_option("--no_syn_head_loss_bp", action="store_false", dest="syn_head_loss_bp", default=True)
     parser.add_option("--task_specific_recurrent_layer", action="store_true", dest="task_specific_recurrent_layer", default=False)
+    parser.add_option("--add_bert", action="store_true", dest="add_bert_features", default=False)
     parser.add_option("--stop", type="int", dest="stop", default=10000)
     parser.add_option("--dynet-mem", type="int", dest="mem", default=0)
     parser.add_option("--dynet-autobatch", type="int", dest="dynet-autobatch", default=0)
@@ -105,7 +108,9 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
     print 'options', options
     print 'Using external embedding:', options.external_embedding
+
     if options.predictFlag:
+        #test time
         with open(options.params, 'r') as paramsfp:
             w2i, l2i, pos, dep_rels, sem_rels, chars, stored_opt = pickle.load(paramsfp)
         stored_opt.external_embedding = options.external_embedding
@@ -117,12 +122,13 @@ if __name__ == '__main__':
         print 'loading buckets'
         test_buckets = [list()]
         test_data = list(utils.read_conll(open(options.conll_test, 'r')))
-        for d in test_data:
-            test_buckets[0].append(d)
+        for i, d in enumerate(test_data):
+            test_buckets[0].append((i,d))
         print 'parsing'
-        parse(parser, test_buckets, options.conll_test, options.conll_output)
+        parse(parser, test_buckets, options.conll_test, options.conll_output, is_dev=False)
         te = time.time()
         print 'Finished predicting test.', te - ts, 'seconds.'
+
     else:
         print 'Preparing vocab'
         w2i, l2i, pos, dep_rels, sem_rels, chars = utils.vocab(options.conll_train, options.min_count)
@@ -139,14 +145,14 @@ if __name__ == '__main__':
         max_len = max([len(d) for d in train_data])
         min_len = min([len(d) for d in train_data])
         buckets = [list() for i in range(min_len, max_len + 1)]
-        for d in train_data:
-            buckets[min(0, len(d) - min_len - 1)].append(d)
+        for i, d in enumerate(train_data):
+            buckets[min(0, len(d) - min_len - 1)].append((i,d))
         buckets = [x for x in buckets if x != []]
         dev_buckets = [list()]
         if options.conll_dev:
             dev_data = list(utils.read_conll(open(options.conll_dev, 'r')))
-            for d in dev_data:
-                dev_buckets[0].append(d)
+            for j, d in enumerate(dev_data):
+                dev_buckets[0].append((j,d))
         best_las = 0
         best_lf = 0
         no_improvement = 0
@@ -175,7 +181,7 @@ if __name__ == '__main__':
                             round(100 * float(i + 1) / len(mini_batches), 2)) + '% loss=' + str(
                             closs / 10) + ' time: ' + str(time.time() - start) + '\n')
                     if t % 100 == 0 and options.conll_dev:
-                        uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out')
+                        uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out', is_dev=True)
 
                         if options.task == 'syntax':
                             print 'current syntax accuracy', best_las, uas

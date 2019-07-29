@@ -327,7 +327,7 @@ class MSTParserLSTM:
 
         return (char_fwd, char_bckd)
 
-    def recurrent_layer(self, minibatch, train):
+    def recurrent_layer(self, minibatch, is_dev, train):
         words, lemmas, pwords, pos, chars = minibatch[0], minibatch[1], minibatch[2], minibatch[3], minibatch[8]
         if self.options.use_char:
             cembed = [lookup_batch(self.clookup, c) for c in chars]
@@ -357,7 +357,7 @@ class MSTParserLSTM:
         posembed = [lookup_batch(self.plookup, pos[i]) for i in range(len(pos))] if self.options.use_pos else None
 
         if self.options.add_bert_features_to_input:
-            minibatch_bert_features = self.get_minibatch_bert_features(minibatch, is_dev=False)
+            minibatch_bert_features = self.get_minibatch_bert_features(minibatch, is_dev)
             bf = [[] for _ in range(minibatch_bert_features[0].shape[0])]
             for b in range(len(minibatch_bert_features)):
                 for w in range(len(minibatch_bert_features[b])):
@@ -403,7 +403,7 @@ class MSTParserLSTM:
         return h, sem_h
 
     def build_syntax_graph(self, mini_batch, t=1):
-        h = self.recurrent_layer(mini_batch, train=True)
+        h = self.recurrent_layer(mini_batch, False, train=True)
         arc_scores, rel_scores = self.get_syntax_scores(h, mini_batch, train=True)
         flat_scores = reshape(arc_scores, (mini_batch[0].shape[0],), mini_batch[0].shape[0] * mini_batch[0].shape[1])
         flat_rel_scores = reshape(rel_scores, (mini_batch[0].shape[0], len(self.idep_rels)),
@@ -436,7 +436,7 @@ class MSTParserLSTM:
         return arc_scores, rel_scores
 
     def build_semantic_graph(self, mini_batch, t=1):
-        h, _ = self.recurrent_layer(mini_batch, train=True)
+        h, _ = self.recurrent_layer(mini_batch, False, train=True)
         fnn_input = h
         if self.options.add_bert_features:
             minibatch_bert_features = self.get_minibatch_bert_features(mini_batch, is_dev=False)
@@ -592,7 +592,7 @@ class MSTParserLSTM:
         return arc_loss, rel_loss
 
     def build_mtl_graph(self, mini_batch, sharing_mode, t=1):
-        shared_h, sem_h = self.recurrent_layer(mini_batch, train=True)
+        shared_h, sem_h = self.recurrent_layer(mini_batch, False ,train=True)
         fnn_input = shared_h
         if self.options.task_specific_recurrent_layer:
             fnn_input = concatenate([shared_h, sem_h])
@@ -628,7 +628,7 @@ class MSTParserLSTM:
         return t + 1, loss
 
     def decode(self, mini_batch, is_dev):
-        shared_h, sem_h = self.recurrent_layer(mini_batch, train=False)
+        shared_h, sem_h = self.recurrent_layer(mini_batch, is_dev, train=False)
 
         fnn_input = shared_h
         if self.options.task_specific_recurrent_layer:

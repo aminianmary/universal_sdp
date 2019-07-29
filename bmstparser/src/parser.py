@@ -126,7 +126,7 @@ if __name__ == '__main__':
         for i, d in enumerate(test_data):
             test_buckets[0].append((i,d))
         print 'parsing'
-        parse(parser, test_buckets, options.conll_test, options.conll_output, is_dev=False)
+        parse(parser, test_buckets, options.conll_test, options.conll_output, False)
         te = time.time()
         print 'Finished predicting test.', te - ts, 'seconds.'
 
@@ -182,7 +182,7 @@ if __name__ == '__main__':
                             round(100 * float(i + 1) / len(mini_batches), 2)) + '% loss=' + str(
                             closs / 10) + ' time: ' + str(time.time() - start) + '\n')
                     if t % 100 == 0 and options.conll_dev:
-                        uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out', is_dev=True)
+                        uas, las, uf, lf = parse(parser, dev_buckets, options.conll_dev, options.output + '/dev.out', True)
 
                         if options.task == 'syntax':
                             print 'current syntax accuracy', best_las, uas

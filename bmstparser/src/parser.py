@@ -115,6 +115,7 @@ if __name__ == '__main__':
         with open(options.params, 'r') as paramsfp:
             w2i, l2i, pos, dep_rels, sem_rels, chars, stored_opt = pickle.load(paramsfp)
         stored_opt.external_embedding = options.external_embedding
+        stored_opt.bert_embedding = options.bert_embedding
         print 'stored options:', stored_opt
         print 'Initializing lstm mstparser:'
         parser = mstlstm.MSTParserLSTM(pos, dep_rels, sem_rels, w2i, l2i, chars, stored_opt)

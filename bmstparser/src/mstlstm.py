@@ -462,6 +462,9 @@ class MSTParserLSTM:
 
     def get_minibatch_bert_features (self, mini_batch, is_dev):
         #concatenating bert features to BiLSTM hidden output
+        #print 'we are in this mode: in_dev= '+ str(is_dev)
+        #print 'self.bert_embedding dimensions: '
+        #print 'number of sentences in self.bert_embedding: '+ str(len(self.bert_embedding))
         mini_batch_sen_ids = mini_batch[-2]
         words = mini_batch[0]
         sen_bert_features = []
@@ -469,6 +472,8 @@ class MSTParserLSTM:
         no_bert = [0] * self.bert_dim
         for i in range(words.shape[1]):
             s_id = mini_batch_sen_ids[i]
+            #print 'batch element: '+ str(i) +' -- sentence_id: '+ str(s_id)
+            #print 'number of words in self.bert_embedding[s_id]: '+ str(len(self.bert_embedding[s_id]))
             sen_bert_features = []
             for j in range(words.shape[0]):
                 if j == 0:
@@ -479,6 +484,7 @@ class MSTParserLSTM:
                     if is_dev:
                         sen_bert_features.append(self.dev_bert_embedding[s_id][j])
                     else:
+                        #print 'token index: '+ str(j)
                         sen_bert_features.append(self.bert_embedding[s_id][j])
             batch_bert_features.append(np.array(sen_bert_features))
 
